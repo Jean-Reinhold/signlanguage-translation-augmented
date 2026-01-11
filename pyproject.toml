@@ -52,10 +52,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# For LLM-based augmentation
+# For LLM-based augmentation (Azure OpenAI)
 augmentation = [
     "openai>=1.0.0",
     "nest-asyncio>=1.5.0",
+    "python-dotenv>=1.0.0",
 ]
 
 # For Signformer training

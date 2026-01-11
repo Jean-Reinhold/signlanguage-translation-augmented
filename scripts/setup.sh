@@ -21,6 +21,37 @@ cd "$(dirname "$0")/.."
 PROJECT_ROOT=$(pwd)
 echo "📂 Project root: $PROJECT_ROOT"
 
+# --- External Disk Configuration ---
+EXTERNAL_DISK="/mnt/disk3Tb"
+EXTERNAL_VENV_DIR="$EXTERNAL_DISK/venvs/sign-augmented"
+EXTERNAL_UV_CACHE="$EXTERNAL_DISK/uv-cache"
+
+if [ -d "$EXTERNAL_DISK" ]; then
+    echo "💾 External disk detected at $EXTERNAL_DISK"
+    
+    # 1. Ensure directories exist on external disk
+    mkdir -p "$EXTERNAL_VENV_DIR"
+    mkdir -p "$EXTERNAL_UV_CACHE"
+    
+    # 2. Set UV Cache Directory
+    export UV_CACHE_DIR="$EXTERNAL_UV_CACHE"
+    echo "📦 UV cache set to: $UV_CACHE_DIR"
+    
+    # 3. Handle .venv symlink
+    if [ ! -L ".venv" ] && [ -d ".venv" ]; then
+        echo "⚠️  Found existing local .venv directory. Moving to external disk..."
+        rm -rf ".venv" # Removing it is cleaner if we're moving to symlink
+    fi
+    
+    if [ ! -L ".venv" ]; then
+        echo "🔗 Linking .venv to external disk: $EXTERNAL_VENV_DIR"
+        ln -snf "$EXTERNAL_VENV_DIR" ".venv"
+    fi
+else
+    echo "ℹ️  No external disk found at $EXTERNAL_DISK, using local storage."
+fi
+# -----------------------------------
+
 # Create virtual environment with Python 3.11
 echo "🐍 Creating virtual environment with Python 3.11..."
 uv venv --python 3.11

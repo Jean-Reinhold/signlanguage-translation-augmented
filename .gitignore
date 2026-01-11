@@ -1,0 +1,207 @@
+# ========================
+# Python
+# ========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ========================
+# Virtual Environments
+# ========================
+.venv
+.venv/
+venv
+venv/
+ENV/
+env/
+.env/
+
+# ========================
+# Package Managers
+# ========================
+# uv
+.uv/
+uv.lock
+
+# pip
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ========================
+# IDE & Editors
+# ========================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+*.sublime-workspace
+*.sublime-project
+
+# ========================
+# Jupyter Notebooks
+# ========================
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+
+# ========================
+# Testing & Coverage
+# ========================
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# ========================
+# Type Checking & Linting
+# ========================
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.ruff_cache/
+.pytype/
+
+# ========================
+# ML/Deep Learning
+# ========================
+# Model checkpoints
+checkpoints/
+*.ckpt
+*.pt
+*.pth
+*.safetensors
+*.bin
+
+# Training outputs
+outputs/
+runs/
+logs/
+lightning_logs/
+
+# Experiment tracking
+wandb/
+mlruns/
+tensorboard/
+
+# ========================
+# Datasets & Data
+# ========================
+data/
+datasets/
+*.h5
+*.hdf5
+*.npy
+*.npz
+*.pkl
+*.pickle
+
+# Feature files (can be large)
+*.features
+*.embeddings
+
+# Video/Image data
+*.mp4
+*.avi
+*.mov
+*.mkv
+# Uncomment if you want to ignore images:
+# *.jpg
+# *.jpeg
+# *.png
+# *.gif
+
+# ========================
+# Environment Variables
+# ========================
+.env
+.env.local
+.env.*.local
+*.env
+!.env.example
+secrets.yaml
+secrets.yml
+
+# ========================
+# OS Generated
+# ========================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ========================
+# Documentation
+# ========================
+docs/_build/
+site/
+
+# ========================
+# Misc
+# ========================
+*.log
+*.tmp
+*.temp
+*.bak
+*.cache
+.cache/
+
+# Archives (usually downloaded dependencies or data)
+*.tar.gz
+*.zip
+*.gz
+
+# Slurm job outputs
+slurm-*.out
+*.out
+*.err
+
+# Config overrides (keep templates)
+config.local.yaml
+config.local.yml
+!config.example.yaml
