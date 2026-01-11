@@ -52,9 +52,9 @@ else
 fi
 # -----------------------------------
 
-# Create virtual environment with Python 3.11
-echo "🐍 Creating virtual environment with Python 3.11..."
-uv venv --python 3.11
+# Create virtual environment with Python 3.9 (required for older torch/torchtext)
+echo "🐍 Creating virtual environment with Python 3.9..."
+uv venv --python 3.9 --clear
 
 # Activate virtual environment
 echo "🔄 Activating virtual environment..."

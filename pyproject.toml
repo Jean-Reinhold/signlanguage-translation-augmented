@@ -7,25 +7,25 @@ license = { text = "MIT" }
 authors = [
     { name = "Pedro Dal Bianco", email = "dalbianco.pedro@gmail.com" }
 ]
-requires-python = ">=3.10,<3.12"
+requires-python = ">=3.9,<3.11"
 keywords = ["sign-language", "translation", "deep-learning", "augmentation", "transformer"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 
 dependencies = [
     # Core ML frameworks (with CUDA/GPU support)
-    "torch>=2.0.0,<3.0.0",
-    "torchvision>=0.15.0",
-    "torchtext>=0.15.0",
-    "lightning>=2.0.0",
-    "torchmetrics>=1.0.0",
+    "torch==1.10.1+cu113",
+    "torchvision==0.11.2+cu113",
+    "torchtext==0.11.1",
+    "lightning>=1.5.0",
+    "torchmetrics>=0.6.0",
     
     # Data processing
     "numpy>=1.24.0,<2.0.0",
@@ -52,11 +52,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# For LLM-based augmentation (Azure OpenAI)
+# For LLM-based augmentation
 augmentation = [
     "openai>=1.0.0",
     "nest-asyncio>=1.5.0",
-    "python-dotenv>=1.0.0",
 ]
 
 # For Signformer training
@@ -66,7 +65,7 @@ signformer = [
 
 # For loading TensorFlow datasets (dataset formatting)
 tfds = [
-    "tensorflow>=2.12.0,<2.16.0",
+    "tensorflow-cpu>=2.12.0,<2.16.0",
     "tensorflow-datasets>=4.9.0",
     "sign-language-datasets>=0.1.0",
 ]
@@ -90,7 +89,7 @@ notebooks = [
 
 # All optional dependencies
 all = [
-    "signlanguage-translation-augmented[augmentation,signformer,notebooks,dev]",
+    "signlanguage-translation-augmented[augmentation,signformer,tfds,notebooks,dev]",
 ]
 
 [project.urls]
@@ -101,6 +100,9 @@ Repository = "https://github.com/pdalbianco/signlanguage-translation-augmented"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.uv]
+extra-index-url = ["https://download.pytorch.org/whl/cu113"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src", "lib"]

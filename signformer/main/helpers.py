@@ -18,7 +18,7 @@ import numpy as np
 
 import torch
 from torch import nn, Tensor
-from torchtext.data import Dataset
+from torchtext.legacy.data import Dataset
 import yaml
 from main.vocabulary import GlossVocabulary, TextVocabulary
 

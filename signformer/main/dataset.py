@@ -2,8 +2,8 @@
 """
 Data module
 """
-from torchtext import data
-from torchtext.data import Field, RawField
+from torchtext.legacy import data
+from torchtext.legacy.data import Field, RawField
 from typing import List, Tuple, Iterator
 import logging
 import pickle

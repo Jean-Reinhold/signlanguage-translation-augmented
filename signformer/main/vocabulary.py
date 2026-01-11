@@ -3,7 +3,7 @@ import numpy as np
 
 from collections import defaultdict, Counter
 from typing import List
-from torchtext.data import Dataset
+from torchtext.legacy.data import Dataset
 
 SIL_TOKEN = "<si>"
 UNK_TOKEN = "<unk>"

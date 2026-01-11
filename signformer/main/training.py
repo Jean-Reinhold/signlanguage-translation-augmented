@@ -27,14 +27,14 @@ from main.prediction import validate_on_data
 from main.loss import XentLoss
 from main.data import load_data, make_data_iter
 from main.dataset import iter_dataset_file
-from torchtext import data as ttdata
+from torchtext.legacy import data as ttdata
 from main.builders import build_optimizer, build_scheduler, build_gradient_clipper
 from main.prediction import test
 from main.metrics import wer_single
 from main.vocabulary import SIL_TOKEN
 from torch import Tensor
-from torch.utils.tensorboard import SummaryWriter
-from torchtext.data import Dataset
+from tensorboardX import SummaryWriter
+from torchtext.legacy.data import Dataset
 from typing import List, Dict
 
 # pylint: disable=too-many-instance-attributes
@@ -58,7 +58,7 @@ class TrainManager:
         self.logger = make_logger(model_dir=self.model_dir)
         self.logging_freq = train_config.get("logging_freq", 100)
         self.valid_report_file = "{}/validations.txt".format(self.model_dir)
-        self.tb_writer = SummaryWriter(log_dir=self.model_dir + "/tensorboard/")
+        self.tb_writer = SummaryWriter(logdir=self.model_dir + "/tensorboard/")
 
         # input
         self.feature_size = (

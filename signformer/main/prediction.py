@@ -10,7 +10,7 @@ import time
 import torch.nn as nn
 
 from typing import List
-from torchtext.data import Dataset
+from torchtext.legacy.data import Dataset
 from main.loss import XentLoss
 from main.helpers import (
     bpe_postprocess,
@@ -22,7 +22,7 @@ from main.metrics import bleu, chrf, rouge, wer_list
 from main.model import build_model, SignModel
 from main.batch import Batch
 from main.data import load_data, make_data_iter
-from torchtext import data as ttdata
+from torchtext.legacy import data as ttdata
 from main.dataset import iter_dataset_file
 from main.vocabulary import PAD_TOKEN, SIL_TOKEN
 from main.phoenix_utils.phoenix_cleanup import (

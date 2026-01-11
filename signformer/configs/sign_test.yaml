@@ -1,0 +1,98 @@
+name: sign_quick_test
+data:
+    data_path: /mnt/disk3Tb/exported-slt-datasets
+    version: phoenix_2014_trans
+    sgn: sign
+    txt: text
+    gls: gloss
+    train: LSAT.pami0.train
+    dev: LSAT.pami0.val
+    test: LSAT.pami0.test
+    feature_size: 1024
+    level: word
+    txt_lowercase: true
+    max_sent_length: 400
+    random_train_subset: 50      # Very small for CPU test
+    random_dev_subset: 20        # Very small for CPU test
+    multimodal: 0.0
+    stream_train_parts: false    # Disable streaming for quick test
+    stream_dev_parts: false
+    stream_test_parts: false
+testing:
+    recognition_beam_sizes:
+    - 1
+    translation_beam_sizes:
+    - 1
+    translation_beam_alphas:
+    - -1
+training:
+    reset_best_ckpt: true
+    reset_scheduler: true
+    reset_optimizer: true
+    random_seed: 42
+    model_dir: "/home/pdalbianco/Github/signlanguage-translation-augmented/signformer/test_output"
+    recognition_loss_weight: 0.0
+    translation_loss_weight: 1.0
+    eval_metric: bleu
+    optimizer: adam              # Use Adam instead of SophiaG for simpler test
+    learning_rate: 0.0004
+    batch_size: 16               # Smaller batch size
+    num_valid_log: 3
+    epochs: 2                    # Just 2 epochs for quick test
+    early_stopping_metric: eval_metric
+    batch_type: sentence
+    translation_normalization: batch
+    eval_recognition_beam_size: 1
+    eval_translation_beam_size: 1
+    eval_translation_beam_alpha: -1
+    overwrite: true
+    shuffle: true
+    use_cuda: true
+    translation_max_output_length: 30
+    keep_last_ckpts: 1
+    batch_multiplier: 1
+    logging_freq: 20             # Log more frequently for test
+    validation_freq: 50          # Validate more frequently for test
+    betas:
+    - 0.9
+    - 0.999
+    scheduling: plateau
+    learning_rate_min: 1.0e-06
+    weight_decay: 0.001
+    patience: 5
+    decrease_factor: 0.8
+    label_smoothing: 0.1
+model:
+    initializer: xavier
+    bias_initializer: zeros
+    init_gain: 1.0
+    embed_initializer: xavier
+    embed_init_gain: 1.0
+    tied_softmax: false
+    cope: false
+    encoder:
+        type: transformer
+        num_layers: 1
+        num_heads: 4             # Reduced heads for faster test
+        embeddings:
+            embedding_dim: 128   # Smaller model
+            scale: false
+            dropout: 0.1
+            norm_type: batch
+            activation_type: softsign
+        hidden_size: 128         # Smaller hidden size
+        ff_size: 512             # Smaller feedforward
+        dropout: 0.1
+    decoder:
+        type: transformer
+        num_layers: 1
+        num_heads: 4             # Reduced heads
+        embeddings:
+            embedding_dim: 128   # Smaller embeddings
+            scale: false
+            dropout: 0.1
+            norm_type: batch
+            activation_type: softsign
+        hidden_size: 128         # Smaller hidden size
+        ff_size: 512             # Smaller feedforward
+        dropout: 0.1
