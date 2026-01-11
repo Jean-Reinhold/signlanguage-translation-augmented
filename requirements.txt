@@ -1,0 +1,51 @@
+# Sign Language Translation Pipeline Requirements
+# ================================================
+
+# Core ML frameworks
+torch>=2.0.0
+torchvision>=0.15.0
+torchtext>=0.15.0
+lightning>=2.0.0
+torchmetrics>=1.0.0
+
+# Data processing
+numpy>=1.24.0
+pandas>=2.0.0
+scikit-learn>=1.3.0
+scikit-video>=1.1.11
+
+# NLP
+sacrebleu>=2.3.0
+nltk>=3.8.0
+
+# Visualization
+matplotlib>=3.7.0
+seaborn>=0.12.0
+tqdm>=4.65.0
+
+# Configuration & utilities
+pyyaml>=6.0
+portalocker>=2.7.0
+h5py>=3.8.0
+
+# API & Web
+openai>=1.0.0  # For LLM augmentation
+
+# Optimization (Signformer specific)
+sophia-optimizer>=0.2.0  # SophiaG optimizer
+
+# Jupyter
+jupyter>=1.0.0
+ipywidgets>=8.0.0
+
+# TensorFlow (for loading TFDS datasets - optional)
+# tensorflow>=2.12.0
+# tensorflow-datasets>=4.9.0
+# sign-language-datasets>=0.1.0
+
+# Weights & Biases (for experiment tracking)
+wandb>=0.15.0
+
+# Note: Local packages (posecraft, slt_datasets) are included in lib/
+# They can also be installed from pip if you have them published:
+# pip install posecraft slt_datasets

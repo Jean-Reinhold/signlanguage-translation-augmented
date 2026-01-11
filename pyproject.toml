@@ -1,0 +1,162 @@
+[project]
+name = "signlanguage-translation-augmented"
+version = "0.1.0"
+description = "Sign Language Translation Pipeline with LLM-based Data Augmentation"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "Pedro Dal Bianco", email = "dalbianco.pedro@gmail.com" }
+]
+requires-python = ">=3.10,<3.12"
+keywords = ["sign-language", "translation", "deep-learning", "augmentation", "transformer"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    # Core ML frameworks (with CUDA/GPU support)
+    "torch>=2.0.0,<3.0.0",
+    "torchvision>=0.15.0",
+    "torchtext>=0.15.0",
+    "lightning>=2.0.0",
+    "torchmetrics>=1.0.0",
+    
+    # Data processing
+    "numpy>=1.24.0,<2.0.0",
+    "pandas>=2.0.0",
+    "scikit-learn>=1.3.0",
+    "scikit-video>=1.1.11",
+    
+    # NLP & Metrics
+    "sacrebleu>=2.3.0",
+    "nltk>=3.8.0",
+    
+    # Visualization
+    "matplotlib>=3.7.0",
+    "seaborn>=0.12.0",
+    "tqdm>=4.65.0",
+    
+    # Configuration & utilities
+    "pyyaml>=6.0",
+    "portalocker>=2.7.0",
+    "h5py>=3.8.0",
+    
+    # Experiment tracking
+    "wandb>=0.15.0",
+]
+
+[project.optional-dependencies]
+# For LLM-based augmentation
+augmentation = [
+    "openai>=1.0.0",
+    "nest-asyncio>=1.5.0",
+]
+
+# For Signformer training
+signformer = [
+    "sophia-optimizer>=0.2.0",
+]
+
+# For loading TensorFlow datasets (dataset formatting)
+tfds = [
+    "tensorflow>=2.12.0,<2.16.0",
+    "tensorflow-datasets>=4.9.0",
+    "sign-language-datasets>=0.1.0",
+]
+
+# Development dependencies
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+    "pre-commit>=3.0.0",
+]
+
+# Jupyter notebooks
+notebooks = [
+    "jupyter>=1.0.0",
+    "ipywidgets>=8.0.0",
+    "jupyterlab>=4.0.0",
+]
+
+# All optional dependencies
+all = [
+    "signlanguage-translation-augmented[augmentation,signformer,notebooks,dev]",
+]
+
+[project.urls]
+Homepage = "https://github.com/pdalbianco/signlanguage-translation-augmented"
+Documentation = "https://github.com/pdalbianco/signlanguage-translation-augmented#readme"
+Repository = "https://github.com/pdalbianco/signlanguage-translation-augmented"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src", "lib"]
+
+# UV uses dependency-groups instead of tool.uv.dev-dependencies
+[dependency-groups]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+]
+
+[tool.black]
+line-length = 100
+target-version = ["py310", "py311"]
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+    | \.venv
+    | __pycache__
+    | \.mypy_cache
+    | build
+    | dist
+)/
+'''
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # Pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by black)
+    "B008",  # do not perform function calls in argument defaults
+    "C901",  # too complex
+]
+
+[tool.ruff.per-file-ignores]
+"__init__.py" = ["F401"]  # unused imports in __init__ files
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+addopts = "-v --cov=src --cov=lib --cov-report=term-missing"

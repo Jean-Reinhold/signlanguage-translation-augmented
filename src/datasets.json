@@ -1,0 +1,58 @@
+[
+    {
+        "id": "greek_sl_dataset",
+        "path": "/mnt/disk3Tb/slt-datasets/GSL",
+        "size": 5.422837532125413,
+    },
+    {
+        "id": "indian_sl_dataset",
+        "path": "/mnt/disk3Tb/slt-datasets/ISL",
+        "size": 422.5068106474355,
+    },
+    {
+        "id": "LSFB-CONT",
+        "path": "/mnt/disk3Tb/slt-datasets/LSFB-CONT",
+        "size": 28.052381049841642,
+    },
+    {
+        "id": "How2Sign",
+        "path": "/mnt/disk3Tb/slt-datasets/How2Sign",
+        "size": 69.47112722322345,
+    },
+    {"id": "lsat", "path": "/mnt/disk3Tb/slt-datasets/lsat", "size": 45.59110515844077},
+    {
+        "id": "phoenix14t",
+        "path": "/mnt/disk3Tb/slt-datasets/RWTH_PHOENIX_2014T",
+        "size": 5.753907754085958,
+    },
+    {
+        "id": "Content4All-SWISSTXT-NEWS",
+        "path": "/mnt/disk3Tb/slt-datasets/Content4All/ANNOTATED-DATASETS/SWISSTXT-NEWS",
+        "size": 27.71926633734256,
+    },
+    {
+        "id": "Content4All-SWISSTXT-WEATHER",
+        "path": "/mnt/disk3Tb/slt-datasets/Content4All/ANNOTATED-DATASETS/SWISSTXT-WEATHER",
+        "size": 2.736996346153319,
+    },
+    {
+        "id": "Content4All-VRT-NEWS",
+        "path": "/mnt/disk3Tb/slt-datasets/Content4All/ANNOTATED-DATASETS/VRT-NEWS",
+        "size": 17.326954962685704,
+    },
+    {
+        "id": "WMT-SLT23 (part 1)",
+        "path": "/mnt/disk3Tb/slt-datasets/WMT-SLT23",
+        "size": 160.3696169462055,
+    },
+    {
+        "id": "WMT-SLT23 (part 2)",
+        "path": "/mnt/disk3Tb/slt-datasets/WMT-SLT23-2",
+        "size": 0.08894404396414757,
+    },
+    {
+        "id": "WMT-SLT23 (part 3)",
+        "path": "/mnt/disk3Tb/slt-datasets/WMT-SLT23-3",
+        "size": 303.42267386894673,
+    },
+]

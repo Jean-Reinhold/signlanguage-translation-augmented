@@ -1,0 +1,27 @@
+{
+	"INPUT_MODE": "pose",
+	"OUTPUT_MODE": "text",
+	"BATCH_SIZE": 64,
+	"MAX_FRAMES": 200,
+	"SAMPLE_RATE": 5,
+	"MAX_TOKENS": 80,
+	"LANDMARKS_USED": [
+		"body",
+		"lhand",
+		"rhand"
+	],
+	"USE_3D": false,
+	"TRANSFORMS": [
+		"FilterLandmarks",
+		"RandomSampleFrames",
+		"PadTruncateFrames",
+		"ReplaceNansWithZeros",
+		"FlattenKeypoints"
+	],
+	"D_MODEL": 128,
+	"DROPOUT": 0.2,
+	"NUM_ENCODER_LAYERS": 4,
+	"NUM_DECODER_LAYERS": 2,
+	"USE_CLASS_WEIGHTS": false,
+	"LR": 0.0001
+}
