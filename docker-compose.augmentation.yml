@@ -1,0 +1,121 @@
+# Docker Compose for SLT Dataset Augmentation
+# ============================================
+#
+# Runs back-translation augmentation for SLT datasets with annotations.csv format.
+# Configured for GPT-4.1-mini with high rate limits:
+#   - RPM: 5,000 requests/minute
+#   - TPM: 2,000,000 tokens/minute
+#
+# Working datasets: RWTH_PHOENIX_2014T, LSAT, ISL, GSL
+# Excluded (incompatible format): How2Sign, LSFB-CONT
+#
+# Usage:
+#   docker compose -f docker-compose.augmentation.yml up --build
+#   docker compose -f docker-compose.augmentation.yml up rwth_phoenix
+#
+
+services:
+  # ============================================
+  # RWTH-PHOENIX-2014T (German Sign Language)
+  # ✅ Already completed successfully
+  # ============================================
+  rwth_phoenix:
+    build:
+      context: .
+      dockerfile: docker/augmentation/Dockerfile
+    container_name: augment-rwth-phoenix
+    env_file: .env
+    tty: true
+    environment:
+      - DATASET=RWTH_PHOENIX_2014T
+      - AZURE_OPENAI_RPM=5000
+      - AZURE_OPENAI_TPM=2000000
+    volumes:
+      - /mnt/disk3Tb/slt-datasets:/mnt/disk3Tb/slt-datasets:ro
+      - /mnt/disk3Tb/augmented-slt-datasets:/mnt/disk3Tb/augmented-slt-datasets
+    command: ["bash", "-c", "echo '🧹 Cleaning output directory for RWTH_PHOENIX_2014T...' && rm -rf /mnt/disk3Tb/augmented-slt-datasets/RWTH_PHOENIX_2014T && echo '🚀 Starting augmentation for RWTH_PHOENIX_2014T...' && python -m src.augmentation.augment_dataset --dataset RWTH_PHOENIX_2014T --num-variants 2 --batch-size 500 --summary-report"]
+    restart: "no"
+
+  # ============================================
+  # LSA-T (Argentine Sign Language - Spanish)
+  # Fixed: Use LSAT (uppercase) directory
+  # ============================================
+  lsat:
+    build:
+      context: .
+      dockerfile: docker/augmentation/Dockerfile
+    container_name: augment-lsat
+    env_file: .env
+    tty: true
+    environment:
+      - DATASET=LSAT
+      - AZURE_OPENAI_RPM=5000
+      - AZURE_OPENAI_TPM=2000000
+    volumes:
+      - /mnt/disk3Tb/slt-datasets:/mnt/disk3Tb/slt-datasets:ro
+      - /mnt/disk3Tb/augmented-slt-datasets:/mnt/disk3Tb/augmented-slt-datasets
+    command: ["bash", "-c", "echo '🧹 Cleaning output directory for LSAT...' && rm -rf /mnt/disk3Tb/augmented-slt-datasets/LSAT && echo '🚀 Starting augmentation for LSAT...' && python -m src.augmentation.augment_dataset --dataset LSAT --num-variants 2 --batch-size 500 --summary-report"]
+    depends_on:
+      rwth_phoenix:
+        condition: service_completed_successfully
+    restart: "no"
+
+  # ============================================
+  # ISL (Indian Sign Language - English)
+  # Note: Has 258 NaN text rows that will be skipped
+  # ============================================
+  isl:
+    build:
+      context: .
+      dockerfile: docker/augmentation/Dockerfile
+    container_name: augment-isl
+    env_file: .env
+    tty: true
+    environment:
+      - DATASET=ISL
+      - AZURE_OPENAI_RPM=5000
+      - AZURE_OPENAI_TPM=2000000
+    volumes:
+      - /mnt/disk3Tb/slt-datasets:/mnt/disk3Tb/slt-datasets:ro
+      - /mnt/disk3Tb/augmented-slt-datasets:/mnt/disk3Tb/augmented-slt-datasets
+    command: ["bash", "-c", "echo '🧹 Cleaning output directory for ISL...' && rm -rf /mnt/disk3Tb/augmented-slt-datasets/ISL && echo '🚀 Starting augmentation for ISL...' && python -m src.augmentation.augment_dataset --dataset ISL --num-variants 2 --batch-size 500 --summary-report"]
+    depends_on:
+      lsat:
+        condition: service_completed_successfully
+    restart: "no"
+
+  # ============================================
+  # GSL (Greek Sign Language)
+  # ✅ Already completed successfully
+  # ============================================
+  gsl:
+    build:
+      context: .
+      dockerfile: docker/augmentation/Dockerfile
+    container_name: augment-gsl
+    env_file: .env
+    tty: true
+    environment:
+      - DATASET=GSL
+      - AZURE_OPENAI_RPM=5000
+      - AZURE_OPENAI_TPM=2000000
+    volumes:
+      - /mnt/disk3Tb/slt-datasets:/mnt/disk3Tb/slt-datasets:ro
+      - /mnt/disk3Tb/augmented-slt-datasets:/mnt/disk3Tb/augmented-slt-datasets
+    command: ["bash", "-c", "echo '🧹 Cleaning output directory for GSL...' && rm -rf /mnt/disk3Tb/augmented-slt-datasets/GSL && echo '🚀 Starting augmentation for GSL...' && python -m src.augmentation.augment_dataset --dataset GSL --num-variants 2 --batch-size 500 --summary-report"]
+    depends_on:
+      isl:
+        condition: service_completed_successfully
+    restart: "no"
+
+  # ============================================
+  # Run all datasets sequentially (default)
+  # ============================================
+  all_datasets:
+    image: alpine:latest
+    container_name: augment-all-complete
+    depends_on:
+      gsl:
+        condition: service_completed_successfully
+    command: ["echo", "✅ All datasets augmented successfully!"]
+    restart: "no"

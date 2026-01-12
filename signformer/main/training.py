@@ -1114,7 +1114,7 @@ def train(cfg_file: str) -> None:
 
     # Prepare a small preview dataset for logging when streaming is enabled
     if isinstance(train_data, dict):
-        from torchtext import data as ttdata
+        from torchtext.legacy import data as ttdata
         td_paths = train_data["paths"] if isinstance(train_data["paths"], list) else [train_data["paths"]]
         fields = train_data["fields"]
         named_fields = [

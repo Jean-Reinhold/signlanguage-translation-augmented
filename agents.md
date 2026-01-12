@@ -185,7 +185,7 @@ cp .env.example .env
 | `AZURE_OPENAI_ENDPOINT` | Azure OpenAI resource endpoint |
 | `AZURE_OPENAI_API_KEY` | API key for authentication |
 | `AZURE_OPENAI_API_VERSION` | API version (e.g., `2025-04-01-preview`) |
-| `AZURE_OPENAI_DEPLOYMENT` | Model deployment name (e.g., `gpt-5.2-global`) |
+| `AZURE_OPENAI_DEPLOYMENT` | Model deployment name (e.g., `gpt-5-mini`) |
 
 ### Quick Setup
 
@@ -234,7 +234,7 @@ Each dataset follows the unified `SLTDataset` structure:
 
 **Location**: `src/augmentation/expand_db.ipynb`
 
-The pipeline uses **Azure OpenAI GPT-5.2** to generate semantically equivalent paraphrases:
+The pipeline uses **Azure OpenAI GPT-5-mini** to generate semantically equivalent paraphrases:
 
 ```python
 # Load from .env file
@@ -247,7 +247,7 @@ load_dotenv()
 AZURE_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
 AZURE_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
 AZURE_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
-DEPLOYMENT_NAME = os.getenv("AZURE_OPENAI_DEPLOYMENT")  # gpt-5.2-global
+DEPLOYMENT_NAME = os.getenv("AZURE_OPENAI_DEPLOYMENT")  # gpt-5-mini
 
 SYSTEM_PROMPT = """
 You are a helpful assistant rewriting sentences.

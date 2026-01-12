@@ -143,7 +143,7 @@ For every user input, produce {n} paraphrases that:
 # Configuration
 AUG_FACTOR = 2          # Paraphrases per original
 BATCH_SIZE = 8          # Concurrent API requests
-MODEL_NAME = "gpt-4o-mini"
+MODEL_NAME = "gpt-5-mini"
 ```
 
 **Result**: Original 7,096 samples → 21,288 augmented samples (3x)

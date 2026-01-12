@@ -1,0 +1,229 @@
+# Signformer Training Configuration for Augmented Datasets
+#
+# This configuration is designed for training on back-translation
+# augmented datasets. It follows the patterns from sign_finetune.yaml
+# while pointing to augmented data files.
+#
+# Usage:
+#   python -m main train configs/sign_augmented.yaml --gpu_id 0
+#
+# Before training, build augmented datasets using:
+#   python scripts/build_augmented_dataset.py --dataset RWTH_PHOENIX_2014T
+
+name: sign_augmented_experiment
+
+data:
+    # Path to exported datasets
+    data_path: /mnt/disk3Tb/exported-slt-datasets
+    
+    # Dataset version (kept for compatibility)
+    version: phoenix_2014_trans
+    
+    # Column names in the pickle files
+    sgn: sign
+    txt: text
+    gls: gloss
+    
+    # Augmented dataset files (change prefix based on dataset)
+    # For RWTH-Phoenix augmented:
+    train: RWTH_PHOENIX_2014T-aug.pami0.train
+    dev: RWTH_PHOENIX_2014T-aug.pami0.val
+    test: RWTH_PHOENIX_2014T-aug.pami0.test
+    
+    # Feature configuration
+    # 512 keypoints × 2 coordinates = 1024
+    feature_size: 1024
+    
+    # Tokenization level
+    level: word
+    txt_lowercase: true
+    
+    # Maximum sequence length
+    max_sent_length: 400
+    
+    # Subset options (-1 = use all data)
+    random_train_subset: -1
+    random_dev_subset: -1
+    
+    # Multimodal mixing (0.0 = text only)
+    multimodal: 0.0
+    
+    # Streaming for large datasets
+    stream_train_parts: true
+    stream_chunk_size: 5000
+    stream_dev_parts: true
+    stream_test_parts: true
+    
+    # Optional: Pre-built vocabulary files
+    # Uncomment and set paths if using shared vocabulary
+    # gls_vocab: "/path/to/shared/gls.vocab"
+    # txt_vocab: "/path/to/shared/txt.vocab"
+
+testing:
+    recognition_beam_sizes:
+        - 1
+        - 3
+    translation_beam_sizes:
+        - 1
+        - 3
+    translation_beam_alphas:
+        - -1
+        - 1
+
+training:
+    # Checkpoint management
+    reset_best_ckpt: true
+    reset_scheduler: true
+    reset_optimizer: true
+    
+    # Reproducibility
+    random_seed: 42
+    
+    # Output directory for checkpoints and logs
+    model_dir: /home/pdalbianco/Github/signlanguage-translation-augmented/signformer/experiments/augmented
+    
+    # Optional: Load from pretrained checkpoint
+    # load_model: /path/to/pretrained/best.ckpt
+    
+    # Loss weights (gloss-free = translation only)
+    recognition_loss_weight: 0.0
+    translation_loss_weight: 1.0
+    
+    # Evaluation metric
+    eval_metric: bleu
+    
+    # Optimizer: sophiag recommended, adam as fallback
+    optimizer: sophiag
+    learning_rate: 0.0004
+    
+    # Batch configuration (increased for faster training on RTX 3090)
+    batch_size: 128
+    batch_type: sentence
+    batch_multiplier: 1
+    
+    # Training duration
+    epochs: 1000
+    early_stopping_metric: eval_metric
+    
+    # Evaluation settings
+    eval_recognition_beam_size: 1
+    eval_translation_beam_size: 1
+    eval_translation_beam_alpha: -1
+    
+    # Checkpoint settings
+    overwrite: true
+    keep_last_ckpts: 3
+    
+    # Data shuffling
+    shuffle: true
+    
+    # GPU settings
+    use_cuda: true
+    
+    # Output limits
+    translation_max_output_length: 30
+    num_valid_log: 6
+    
+    # Logging frequency (reduced for faster training)
+    logging_freq: 500
+    validation_freq: 500
+    
+    # Optimizer parameters (for SophiaG)
+    betas:
+        - 0.95
+        - 0.998
+    
+    # Learning rate scheduling
+    scheduling: plateau
+    learning_rate_min: 1.0e-06
+    weight_decay: 0.003
+    patience: 10
+    decrease_factor: 0.8
+    
+    # Regularization
+    label_smoothing: 0.1
+    translation_normalization: batch
+    
+    # SophiaG specific
+    lr_s_dim_model: 256
+    warmup_step: 1000
+    K: 2
+
+model:
+    # Weight initialization
+    initializer: xavier
+    bias_initializer: zeros
+    init_gain: 1.0
+    embed_initializer: xavier
+    embed_init_gain: 1.0
+    
+    # Output layer
+    tied_softmax: false
+    
+    # Position encoding
+    cope: false
+    
+    encoder:
+        type: transformer
+        num_layers: 1
+        num_heads: 8
+        embeddings:
+            embedding_dim: 256
+            scale: false
+            dropout: 0.1
+            norm_type: batch
+            activation_type: softsign
+        hidden_size: 256
+        ff_size: 1024
+        dropout: 0.1
+    
+    decoder:
+        type: transformer
+        num_layers: 1
+        num_heads: 8
+        embeddings:
+            embedding_dim: 256
+            scale: false
+            dropout: 0.1
+            norm_type: batch
+            activation_type: softsign
+        hidden_size: 256
+        ff_size: 1024
+        dropout: 0.1
+
+# ==============================================================================
+# DATASET-SPECIFIC CONFIGURATIONS
+# ==============================================================================
+# Copy and modify the 'data' section above for different datasets.
+# Examples for each supported dataset are provided below as comments.
+#
+# --- LSA-T (Spanish) ---
+# data:
+#     train: lsat-aug.pami0.train
+#     dev: lsat-aug.pami0.val
+#     test: lsat-aug.pami0.test
+#
+# --- How2Sign (English) ---
+# data:
+#     train: How2Sign-aug.pami0.train
+#     dev: How2Sign-aug.pami0.val
+#     test: How2Sign-aug.pami0.test
+#
+# --- ISL (English) ---
+# data:
+#     train: ISL-aug.pami0.train
+#     dev: ISL-aug.pami0.val
+#     test: ISL-aug.pami0.test
+#
+# --- LSFB-CONT (French) ---
+# data:
+#     train: LSFB-CONT-aug.pami0.train
+#     dev: LSFB-CONT-aug.pami0.val
+#     test: LSFB-CONT-aug.pami0.test
+#
+# --- GSL (Greek) ---
+# data:
+#     train: GSL-aug.pami0.train
+#     dev: GSL-aug.pami0.val
+#     test: GSL-aug.pami0.test
+# ==============================================================================
