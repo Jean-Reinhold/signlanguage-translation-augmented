@@ -1,25 +1,29 @@
 # Docker Compose for SLT Dataset Augmentation
 # ============================================
 #
-# Runs back-translation augmentation for SLT datasets with annotations.csv format.
+# Runs back-translation augmentation for all 6 SLT datasets.
 # Configured for GPT-4.1-mini with high rate limits:
 #   - RPM: 5,000 requests/minute
 #   - TPM: 2,000,000 tokens/minute
 #
-# Working datasets: RWTH_PHOENIX_2014T, LSAT, ISL, GSL
-# Excluded (incompatible format): How2Sign, LSFB-CONT
-#
 # Usage:
-#   docker compose -f docker-compose.augmentation.yml up --build
-#   docker compose -f docker-compose.augmentation.yml up rwth_phoenix
+#   # Run only pending datasets (skip already completed):
+#   docker compose -f docker-compose.augmentation.yml --profile pending up --build
+#
+#   # Run all datasets (including already completed):
+#   docker compose -f docker-compose.augmentation.yml --profile all up --build
+#
+#   # Run specific dataset:
+#   docker compose -f docker-compose.augmentation.yml up lsat
 #
 
 services:
   # ============================================
   # RWTH-PHOENIX-2014T (German Sign Language)
-  # ✅ Already completed successfully
+  # ✅ Completed: 7,096 → 20,565 samples
   # ============================================
   rwth_phoenix:
+    profiles: ["all"]
     build:
       context: .
       dockerfile: docker/augmentation/Dockerfile
@@ -38,9 +42,10 @@ services:
 
   # ============================================
   # LSA-T (Argentine Sign Language - Spanish)
-  # Fixed: Use LSAT (uppercase) directory
+  # 🔧 Fixed: Use LSAT (uppercase) directory
   # ============================================
   lsat:
+    profiles: ["pending", "all"]
     build:
       context: .
       dockerfile: docker/augmentation/Dockerfile
@@ -55,16 +60,39 @@ services:
       - /mnt/disk3Tb/slt-datasets:/mnt/disk3Tb/slt-datasets:ro
       - /mnt/disk3Tb/augmented-slt-datasets:/mnt/disk3Tb/augmented-slt-datasets
     command: ["bash", "-c", "echo '🧹 Cleaning output directory for LSAT...' && rm -rf /mnt/disk3Tb/augmented-slt-datasets/LSAT && echo '🚀 Starting augmentation for LSAT...' && python -m src.augmentation.augment_dataset --dataset LSAT --num-variants 2 --batch-size 500 --summary-report"]
+    restart: "no"
+
+  # ============================================
+  # How2Sign (American Sign Language - English)
+  # 🔧 Fixed: Created annotations.csv (35,263 samples)
+  # ============================================
+  how2sign:
+    profiles: ["pending", "all"]
+    build:
+      context: .
+      dockerfile: docker/augmentation/Dockerfile
+    container_name: augment-how2sign
+    env_file: .env
+    tty: true
+    environment:
+      - DATASET=How2Sign
+      - AZURE_OPENAI_RPM=5000
+      - AZURE_OPENAI_TPM=2000000
+    volumes:
+      - /mnt/disk3Tb/slt-datasets:/mnt/disk3Tb/slt-datasets:ro
+      - /mnt/disk3Tb/augmented-slt-datasets:/mnt/disk3Tb/augmented-slt-datasets
+    command: ["bash", "-c", "echo '🧹 Cleaning output directory for How2Sign...' && rm -rf /mnt/disk3Tb/augmented-slt-datasets/How2Sign && echo '🚀 Starting augmentation for How2Sign...' && python -m src.augmentation.augment_dataset --dataset How2Sign --num-variants 2 --batch-size 500 --summary-report"]
     depends_on:
-      rwth_phoenix:
+      lsat:
         condition: service_completed_successfully
     restart: "no"
 
   # ============================================
   # ISL (Indian Sign Language - English)
-  # Note: Has 258 NaN text rows that will be skipped
+  # 🔧 Fixed: NaN text filtering (125,598 valid samples)
   # ============================================
   isl:
+    profiles: ["pending", "all"]
     build:
       context: .
       dockerfile: docker/augmentation/Dockerfile
@@ -80,15 +108,41 @@ services:
       - /mnt/disk3Tb/augmented-slt-datasets:/mnt/disk3Tb/augmented-slt-datasets
     command: ["bash", "-c", "echo '🧹 Cleaning output directory for ISL...' && rm -rf /mnt/disk3Tb/augmented-slt-datasets/ISL && echo '🚀 Starting augmentation for ISL...' && python -m src.augmentation.augment_dataset --dataset ISL --num-variants 2 --batch-size 500 --summary-report"]
     depends_on:
-      lsat:
+      how2sign:
+        condition: service_completed_successfully
+    restart: "no"
+
+  # ============================================
+  # LSFB-CONT (Belgian French Sign Language)
+  # 🔧 Fixed: Created annotations.csv from JSON (5,727 samples)
+  # ============================================
+  lsfb_cont:
+    profiles: ["pending", "all"]
+    build:
+      context: .
+      dockerfile: docker/augmentation/Dockerfile
+    container_name: augment-lsfb-cont
+    env_file: .env
+    tty: true
+    environment:
+      - DATASET=LSFB-CONT
+      - AZURE_OPENAI_RPM=5000
+      - AZURE_OPENAI_TPM=2000000
+    volumes:
+      - /mnt/disk3Tb/slt-datasets:/mnt/disk3Tb/slt-datasets:ro
+      - /mnt/disk3Tb/augmented-slt-datasets:/mnt/disk3Tb/augmented-slt-datasets
+    command: ["bash", "-c", "echo '🧹 Cleaning output directory for LSFB-CONT...' && rm -rf /mnt/disk3Tb/augmented-slt-datasets/LSFB-CONT && echo '🚀 Starting augmentation for LSFB-CONT...' && python -m src.augmentation.augment_dataset --dataset LSFB-CONT --num-variants 2 --batch-size 500 --summary-report"]
+    depends_on:
+      isl:
         condition: service_completed_successfully
     restart: "no"
 
   # ============================================
   # GSL (Greek Sign Language)
-  # ✅ Already completed successfully
+  # ✅ Already completed: 8,821 → 12,058 samples
   # ============================================
   gsl:
+    profiles: ["all"]
     build:
       context: .
       dockerfile: docker/augmentation/Dockerfile
@@ -103,19 +157,4 @@ services:
       - /mnt/disk3Tb/slt-datasets:/mnt/disk3Tb/slt-datasets:ro
       - /mnt/disk3Tb/augmented-slt-datasets:/mnt/disk3Tb/augmented-slt-datasets
     command: ["bash", "-c", "echo '🧹 Cleaning output directory for GSL...' && rm -rf /mnt/disk3Tb/augmented-slt-datasets/GSL && echo '🚀 Starting augmentation for GSL...' && python -m src.augmentation.augment_dataset --dataset GSL --num-variants 2 --batch-size 500 --summary-report"]
-    depends_on:
-      isl:
-        condition: service_completed_successfully
-    restart: "no"
-
-  # ============================================
-  # Run all datasets sequentially (default)
-  # ============================================
-  all_datasets:
-    image: alpine:latest
-    container_name: augment-all-complete
-    depends_on:
-      gsl:
-        condition: service_completed_successfully
-    command: ["echo", "✅ All datasets augmented successfully!"]
     restart: "no"

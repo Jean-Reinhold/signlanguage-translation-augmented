@@ -41,44 +41,53 @@ logger = logging.getLogger("build_augmented_dataset")
 
 
 # Dataset configurations
+# aug_dir_name: directory name in augmented-slt-datasets (may differ from dataset key)
 DATASET_CONFIGS = {
     "RWTH_PHOENIX_2014T": {
         "file_prefix": "RWTH_PHOENIX_2014T.pami0",
+        "aug_dir_name": "RWTH_PHOENIX_2014T",
         "aug_file": "train_aug.tsv",
         "id_column": "id",
     },
     "phoenix14t": {
         "file_prefix": "phoenix14t.pami0",
+        "aug_dir_name": "RWTH_PHOENIX_2014T",
         "aug_file": "train_aug.tsv",
         "id_column": "id",
     },
     "lsat": {
         "file_prefix": "LSAT.pami0",
+        "aug_dir_name": "LSAT",
         "aug_file": "train_aug.tsv",
         "id_column": "id",
     },
     "LSA-T": {
         "file_prefix": "LSAT.pami0",
+        "aug_dir_name": "LSAT",
         "aug_file": "train_aug.tsv",
         "id_column": "id",
     },
     "How2Sign": {
         "file_prefix": "How2Sign.pami0",
+        "aug_dir_name": "How2Sign",
         "aug_file": "train_aug.tsv",
         "id_column": "id",
     },
     "ISL": {
         "file_prefix": "ISL.pami0",
+        "aug_dir_name": "ISL",
         "aug_file": "train_aug.tsv",
         "id_column": "id",
     },
     "LSFB-CONT": {
         "file_prefix": "LSFB-CONT.pami0",
+        "aug_dir_name": "LSFB-CONT",
         "aug_file": "train_aug.tsv",
         "id_column": "id",
     },
     "GSL": {
         "file_prefix": "GSL.pami0",
+        "aug_dir_name": "GSL",
         "aug_file": "train_aug.tsv",
         "id_column": "id",
     },
@@ -273,6 +282,7 @@ def build_augmented_dataset(
     # Get dataset configuration
     config = DATASET_CONFIGS.get(dataset, {})
     file_prefix = config.get("file_prefix", f"{dataset}.pami0")
+    aug_dir_name = config.get("aug_dir_name", dataset)  # Directory name for augmented data
     default_aug_file = config.get("aug_file", "train_aug.tsv")
     id_column = config.get("id_column", "id")
     
@@ -284,8 +294,8 @@ def build_augmented_dataset(
     # Find augmentation file
     aug_path = None
     search_paths = [
-        os.path.join(aug_dir, dataset, aug_file),
-        os.path.join(aug_dir, dataset, "annotations_train_augmented.csv"),
+        os.path.join(aug_dir, aug_dir_name, aug_file),
+        os.path.join(aug_dir, aug_dir_name, "annotations_train_augmented.csv"),
         os.path.join(aug_dir, aug_file),
         os.path.join(data_dir, aug_file),
     ]
