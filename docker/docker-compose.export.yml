@@ -1,15 +1,109 @@
-# Docker Compose for safe export with memory limits
-# Run ONE at a time: docker compose -f docker/docker-compose.export.yml run --rm <service>
+# =============================================================================
+# SIGN LANGUAGE DATASET EXPORT - Docker Compose Configuration
+# =============================================================================
 #
-# Order to run:
-# 1. export-lsfb-aug     (LSFB-CONT augmented - the one that crashed)
-# 2. export-how2sign     (How2Sign vanilla)  
-# 3. export-how2sign-aug (How2Sign augmented)
+# PURPOSE:
+# Export How2Sign and LSFB-CONT datasets to Signformer's .pami0 format with
+# 1024 features (zero-padded from original feature sizes for compatibility).
+#
+# PROBLEM SOLVED:
+# - How2Sign uses OpenPose (67 keypoints = 134 features)
+# - LSFB-CONT uses custom format (75 keypoints = 150 features)
+# - Other datasets (PHOENIX, GSL, LSAT) use MediaPipe (512 keypoints = 1024 features)
+# This export pads the smaller datasets to 1024 features for unified training.
+#
+# =============================================================================
+# REQUIRED INPUT DATA
+# =============================================================================
+#
+# 1. RAW DATASETS (read-only):
+#    /mnt/disk3Tb/slt-datasets/
+#    ├── How2Sign/
+#    │   ├── annotations.csv              # id, text, split columns
+#    │   └── sentence_level/
+#    │       └── {train,val,test}/rgb_front/features/openpose_output/json/
+#    │           └── {video_id}/          # Per-frame JSON keypoint files
+#    │               └── *_keypoints.json
+#    └── LSFB-CONT/
+#        ├── annotations.csv              # id, text, video_id, start, end, split
+#        └── poses/
+#            ├── pose/                    # Body keypoints (33 kp)
+#            ├── left_hand/               # Left hand keypoints (21 kp)
+#            └── right_hand/              # Right hand keypoints (21 kp)
+#                └── {video_id}.npy       # NumPy arrays (frames, keypoints, 3)
+#
+# 2. AUGMENTED ANNOTATIONS (read-only, for augmented exports):
+#    /mnt/disk3Tb/augmented-slt-datasets/
+#    ├── How2Sign/
+#    │   └── train_aug.tsv                # Augmented text annotations
+#    └── LSFB-CONT/
+#        └── annotations_train_augmented.csv
+#
+# 3. OUTPUT DIRECTORY (read-write):
+#    /mnt/disk3Tb/exported-slt-datasets/
+#    └── {Dataset}-{aug?}-1024.pami0.{split}.part{N}
+#
+# =============================================================================
+# OUTPUT FORMAT
+# =============================================================================
+#
+# Files are exported as streaming parts to avoid memory exhaustion:
+#   {Dataset}-1024.pami0.{split}.part0
+#   {Dataset}-1024.pami0.{split}.part1
+#   ...
+#
+# Each part is a gzipped pickle containing a list of samples:
+#   [{
+#       "sign": torch.Tensor,  # Shape (num_frames, 1024) - zero-padded
+#       "text": str,           # Target translation text
+#       "gloss": str,          # Empty (not used)
+#       "signer": str,         # Video/signer ID
+#       "name": str            # Sample identifier
+#   }, ...]
+#
+# Feature layout in 1024-dim vector:
+#   How2Sign:  [0:134] = OpenPose features, [134:1024] = zeros
+#   LSFB-CONT: [0:150] = custom features,   [150:1024] = zeros
+#
+# =============================================================================
+# USAGE
+# =============================================================================
+#
+# IMPORTANT: Run ONE service at a time to avoid overloading the machine!
+#
+# Build the export image:
+#   docker compose -f docker/docker-compose.export.yml build
+#
+# Run exports (one at a time):
+#   docker compose -f docker/docker-compose.export.yml run --rm export-lsfb-aug
+#   docker compose -f docker/docker-compose.export.yml run --rm export-how2sign
+#   docker compose -f docker/docker-compose.export.yml run --rm export-how2sign-aug
+#
+# Monitor memory during export:
+#   watch -n 1 free -h
+#
+# =============================================================================
+# MEMORY CONSIDERATIONS
+# =============================================================================
+#
+# - LSFB-CONT augmented: ~15k samples, needs 16GB limit (large video poses)
+# - How2Sign: ~31k samples vanilla, ~87k augmented, 4GB limit sufficient
+# - Exports use streaming: saves every 100-200 samples to disk
+# - If OOM occurs, reduce CHUNK_SIZE in export scripts
+#
+# =============================================================================
 
 version: "3.9"
 
 services:
-  # LSFB-CONT Augmented (pending - crashed before)
+  # ---------------------------------------------------------------------------
+  # LSFB-CONT Augmented Export
+  # ---------------------------------------------------------------------------
+  # Input:  /mnt/disk3Tb/slt-datasets/LSFB-CONT/poses/*.npy
+  #         /mnt/disk3Tb/augmented-slt-datasets/LSFB-CONT/annotations_train_augmented.csv
+  # Output: /mnt/disk3Tb/exported-slt-datasets/LSFB-CONT-aug-1024.pami0.{split}.part*
+  # Samples: ~15k train (augmented), 155 val, 804 test
+  # ---------------------------------------------------------------------------
   export-lsfb-aug:
     build:
       context: ../
@@ -30,7 +124,13 @@ services:
     mem_limit: 16g
     memswap_limit: 20g
 
-  # How2Sign Vanilla
+  # ---------------------------------------------------------------------------
+  # How2Sign Vanilla Export
+  # ---------------------------------------------------------------------------
+  # Input:  /mnt/disk3Tb/slt-datasets/How2Sign/sentence_level/*/rgb_front/features/openpose_output/json/
+  # Output: /mnt/disk3Tb/exported-slt-datasets/How2Sign-1024.pami0.{split}.part*
+  # Samples: ~31k train, ~1.7k val, ~2.3k test
+  # ---------------------------------------------------------------------------
   export-how2sign:
     build:
       context: ../
@@ -50,7 +150,14 @@ services:
     mem_limit: 4g
     memswap_limit: 6g
 
-  # How2Sign Augmented
+  # ---------------------------------------------------------------------------
+  # How2Sign Augmented Export
+  # ---------------------------------------------------------------------------
+  # Input:  /mnt/disk3Tb/slt-datasets/How2Sign/sentence_level/*/rgb_front/features/openpose_output/json/
+  #         /mnt/disk3Tb/augmented-slt-datasets/How2Sign/train_aug.tsv
+  # Output: /mnt/disk3Tb/exported-slt-datasets/How2Sign-aug-1024.pami0.{split}.part*
+  # Samples: ~87k train (augmented), ~1.7k val, ~2.3k test
+  # ---------------------------------------------------------------------------
   export-how2sign-aug:
     build:
       context: ../

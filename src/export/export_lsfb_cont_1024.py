@@ -2,11 +2,44 @@
 """
 Export LSFB-CONT dataset to Signformer .pami0 format with 1024 features.
 
-STREAMING VERSION - saves chunks to disk to avoid memory exhaustion.
+=============================================================================
+PROBLEM:
+LSFB-CONT uses a custom pose format with 75 keypoints (150 features after
+flattening x,y coords), while other datasets use MediaPipe with 512 keypoints
+(1024 features). This script pads LSFB-CONT to 1024 features for compatibility.
 
+INPUT DATA STRUCTURE:
+    /mnt/disk3Tb/slt-datasets/LSFB-CONT/
+    ├── annotations.csv          # Columns: id, text, video_id, start, end, split
+    └── poses/
+        ├── pose/{video_id}.npy       # Body keypoints (33 kp, frames x 33 x 3)
+        ├── left_hand/{video_id}.npy  # Left hand (21 kp, frames x 21 x 3)
+        └── right_hand/{video_id}.npy # Right hand (21 kp, frames x 21 x 3)
+
+    /mnt/disk3Tb/augmented-slt-datasets/LSFB-CONT/
+    └── annotations_train_augmented.csv  # Augmented text annotations
+
+OUTPUT FORMAT:
+    /mnt/disk3Tb/exported-slt-datasets/LSFB-CONT{-aug}-1024.pami0.{split}.part{N}
+    
+    Each part is a gzipped pickle with list of samples:
+    [{"sign": Tensor(frames, 1024), "text": str, "gloss": "", "signer": str, "name": str}]
+
+FEATURE LAYOUT (1024-dim):
+    [0:66]    = Body pose (33 keypoints * 2 coords)
+    [66:108]  = Left hand (21 keypoints * 2 coords)
+    [108:150] = Right hand (21 keypoints * 2 coords)
+    [150:1024] = Zero padding
+
+MEMORY MANAGEMENT:
+    - Streams data in chunks of 200 samples to avoid OOM
+    - Each chunk saved as separate .part file (no final merge needed)
+    - Recommended Docker memory limit: 16GB
+
+=============================================================================
 Usage:
-    python export_lsfb_cont_1024.py           # Vanilla
-    python export_lsfb_cont_1024.py --augmented  # Augmented
+    python export_lsfb_cont_1024.py              # Vanilla (train/val/test)
+    python export_lsfb_cont_1024.py --augmented  # Augmented train + vanilla val/test
 """
 
 import os

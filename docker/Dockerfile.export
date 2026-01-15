@@ -1,9 +1,41 @@
-# Lightweight Python image for export scripts
+# =============================================================================
+# Sign Language Dataset Export - Docker Image
+# =============================================================================
+#
+# PURPOSE:
+# Lightweight container for exporting How2Sign and LSFB-CONT datasets to
+# Signformer's .pami0 format with 1024 features (zero-padded).
+#
+# FEATURES:
+# - CPU-only PyTorch (no GPU needed for export)
+# - Minimal dependencies for fast builds
+# - Streaming export to handle large datasets without OOM
+#
+# BUILD:
+#   docker build -f docker/Dockerfile.export -t slt-export:latest .
+#
+# USAGE:
+#   See docker-compose.export.yml for full usage instructions.
+#
+# SCRIPTS INCLUDED:
+#   /app/export/export_how2sign_1024.py   - Export How2Sign (134 -> 1024 features)
+#   /app/export/export_lsfb_cont_1024.py  - Export LSFB-CONT (150 -> 1024 features)
+#
+# =============================================================================
+
 FROM python:3.9-slim
+
+LABEL maintainer="SLT Research"
+LABEL description="Export sign language datasets to Signformer format"
+LABEL version="1.0"
 
 WORKDIR /app
 
 # Install minimal dependencies
+# - numpy: Array operations and pose data loading
+# - pandas: CSV/TSV annotation parsing
+# - tqdm: Progress bars for long exports
+# - torch (CPU): Tensor creation for Signformer format
 RUN pip install --no-cache-dir \
     numpy==1.24.3 \
     pandas==2.0.3 \
@@ -13,4 +45,5 @@ RUN pip install --no-cache-dir \
 # Copy export scripts
 COPY src/export/ /app/export/
 
+# Default: keep container running (override with actual command)
 CMD ["tail", "-f", "/dev/null"]

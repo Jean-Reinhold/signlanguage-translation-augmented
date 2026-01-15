@@ -2,11 +2,49 @@
 """
 Export How2Sign dataset to Signformer .pami0 format with 1024 features.
 
-STREAMING VERSION - saves chunks to disk to avoid memory exhaustion.
+=============================================================================
+PROBLEM:
+How2Sign uses OpenPose with 67 keypoints (134 features after flattening x,y),
+while other datasets use MediaPipe with 512 keypoints (1024 features).
+This script pads How2Sign to 1024 features for compatibility.
 
+INPUT DATA STRUCTURE:
+    /mnt/disk3Tb/slt-datasets/How2Sign/
+    ├── annotations.csv                    # Columns: id, text, split
+    └── sentence_level/
+        └── {train,val,test}/
+            └── rgb_front/features/openpose_output/json/
+                └── {video_id}-5-rgb_front/    # Per-video directory
+                    └── *_keypoints.json       # Per-frame OpenPose output
+    
+    OpenPose JSON structure per frame:
+    {"people": [{"pose_keypoints_2d": [...], "hand_left_keypoints_2d": [...], 
+                 "hand_right_keypoints_2d": [...]}]}
+
+    /mnt/disk3Tb/augmented-slt-datasets/How2Sign/
+    └── train_aug.tsv                      # Augmented text annotations
+
+OUTPUT FORMAT:
+    /mnt/disk3Tb/exported-slt-datasets/How2Sign{-aug}-1024.pami0.{split}.part{N}
+    
+    Each part is a gzipped pickle with list of samples:
+    [{"sign": Tensor(frames, 1024), "text": str, "gloss": "", "signer": "", "name": str}]
+
+FEATURE LAYOUT (1024-dim):
+    [0:50]    = Body pose (25 keypoints * 2 coords)
+    [50:92]   = Left hand (21 keypoints * 2 coords)
+    [92:134]  = Right hand (21 keypoints * 2 coords)
+    [134:1024] = Zero padding
+
+MEMORY MANAGEMENT:
+    - Streams data in chunks of 100 samples to avoid OOM
+    - Each chunk saved as separate .part file (no final merge needed)
+    - Recommended Docker memory limit: 4GB
+
+=============================================================================
 Usage:
-    python export_how2sign_1024.py           # Vanilla
-    python export_how2sign_1024.py --augmented  # Augmented
+    python export_how2sign_1024.py              # Vanilla (train/val/test)
+    python export_how2sign_1024.py --augmented  # Augmented train + vanilla val/test
 """
 
 import os
