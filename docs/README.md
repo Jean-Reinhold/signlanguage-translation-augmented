@@ -9,6 +9,8 @@ This folder contains documentation for the Sign Language Translation (SLT) Augme
 | Document | Description |
 |----------|-------------|
 | [DATASET_EXPORT_1024.md](./DATASET_EXPORT_1024.md) | Exporting How2Sign and LSFB-CONT datasets with 1024-feature padding |
+| [TRAINING_STRATEGY.md](./TRAINING_STRATEGY.md) | Combined multi-corpus training strategy and configuration |
+| [RESOURCE_CONSTRAINTS.md](./RESOURCE_CONSTRAINTS.md) | ⚠️ Hardware limitations and optimization (DISK 99% FULL) |
 
 ### Thesis
 

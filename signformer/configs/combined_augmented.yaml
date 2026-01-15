@@ -1,0 +1,169 @@
+# =============================================================================
+# COMBINED AUGMENTED TRAINING
+# =============================================================================
+#
+# ⚠️  WARNING: DISK SPACE CRITICAL - Only 29GB free!
+#     Run AFTER vanilla baseline completes.
+#     See docs/RESOURCE_CONSTRAINTS.md for details.
+#
+# =============================================================================
+# 
+# Purpose: Train Signformer on all 5 datasets WITH augmentation
+# Compare against vanilla baseline to measure augmentation effectiveness.
+#
+# Architecture: MATCHES ORIGINAL SIGNFORMER (lightweight ~6M params)
+#   - Same as vanilla baseline for fair comparison
+#   - Only difference is the training data (augmented)
+#
+# Augmentation Applied:
+#   - Text: Paraphrasing, back-translation (LLM-based)
+#   - Pose: Kinematic perturbations (scaling, rotation, noise)
+#
+# =============================================================================
+
+name: combined_augmented
+
+data:
+    data_path: ../PHOENIX2014T
+    version: phoenix_2014_trans
+    sgn: sign
+    txt: text
+    gls: gloss
+    
+    # Combined training data (augmented versions)
+    train:
+      - RWTH_PHOENIX_2014T-aug.pami0.train
+      - GSL-aug.pami0.train
+      - lsat-aug.pami0.train           # Note: lowercase
+      - How2Sign-aug-1024.pami0.train  # Padded + augmented
+      - LSFB-CONT-aug-1024.pami0.train # Padded + augmented
+    
+    # Validation: same as vanilla (no augmentation on val/test)
+    dev:
+      - RWTH_PHOENIX_2014T.pami0.val
+    
+    # Test: vanilla versions for fair comparison
+    test:
+      - RWTH_PHOENIX_2014T.pami0.test
+      - GSL.pami0.test
+      - LSAT.pami0.test
+      - How2Sign-1024.pami0.test
+      - LSFB-CONT-1024.pami0.test
+    
+    feature_size: 1024
+    level: word
+    txt_lowercase: true
+    max_sent_length: 400
+    random_train_subset: -1
+    random_dev_subset: -1
+    multimodal: 0.0
+    
+    # Streaming (same as vanilla for fair comparison)
+    stream_train_parts: true
+    stream_chunk_size: 3000
+    stream_dev_parts: true
+    stream_test_parts: true
+
+training:
+    # Same as vanilla for fair comparison
+    reset_best_ckpt: true
+    reset_scheduler: true
+    reset_optimizer: true
+    random_seed: 42
+    
+    model_dir: "/mnt/experiments/combined-augmented"
+    
+    recognition_loss_weight: 0.0
+    translation_loss_weight: 1.0
+    eval_metric: bleu
+    early_stopping_metric: eval_metric
+    
+    # Same optimizer as vanilla (SophiaG)
+    optimizer: sophiag
+    learning_rate: 0.0004
+    betas:
+      - 0.95
+      - 0.998
+    weight_decay: 0.003
+    
+    batch_size: 32
+    batch_type: sentence
+    batch_multiplier: 1
+    translation_normalization: batch
+    
+    epochs: 1000
+    scheduling: plateau
+    learning_rate_min: 1.0e-06
+    patience: 10
+    decrease_factor: 0.8
+    warmup_step: 1000
+    
+    label_smoothing: 0.1
+    
+    lr_s_dim_model: 256
+    K: 2
+    
+    logging_freq: 100                 # Same as original
+    validation_freq: 100              # Same as original
+    num_valid_log: 6
+    keep_last_ckpts: 2
+    
+    eval_recognition_beam_size: 1
+    eval_translation_beam_size: 1
+    eval_translation_beam_alpha: -1
+    translation_max_output_length: 30
+    
+    overwrite: false
+    shuffle: true
+    use_cuda: true
+
+# =============================================================================
+# MODEL: SAME AS VANILLA (for fair comparison)
+# =============================================================================
+model:
+    initializer: xavier
+    bias_initializer: zeros
+    init_gain: 1.0
+    embed_initializer: xavier
+    embed_init_gain: 1.0
+    tied_softmax: false
+    cope: false
+    
+    encoder:
+        type: transformer
+        num_layers: 1
+        num_heads: 8
+        embeddings:
+            embedding_dim: 256
+            scale: false
+            dropout: 0.1
+            norm_type: batch
+            activation_type: softsign
+        hidden_size: 256
+        ff_size: 1024
+        dropout: 0.1
+    
+    decoder:
+        type: transformer
+        num_layers: 1
+        num_heads: 8
+        embeddings:
+            embedding_dim: 256
+            scale: false
+            dropout: 0.1
+            norm_type: batch
+            activation_type: softsign
+        hidden_size: 256
+        ff_size: 1024
+        dropout: 0.1
+
+testing:
+    recognition_beam_sizes:
+      - 1
+    translation_beam_sizes:
+      - 1
+      - 5
+    translation_beam_alphas:
+      - -1
+      - 0
+      - 1

@@ -1,0 +1,208 @@
+# =============================================================================
+# SIGNFORMER TRAINING - Docker Compose Configuration
+# =============================================================================
+#
+# PURPOSE:
+# Train Signformer on combined sign language datasets with comprehensive
+# logging, TensorBoard monitoring, and checkpointing.
+#
+# =============================================================================
+# HARDWARE REQUIREMENTS
+# =============================================================================
+#
+# Tested on:
+#   - GPU: NVIDIA RTX 3090 (24GB VRAM)
+#   - RAM: 31GB
+#   - CPU: 4 cores
+#   - Disk: 3TB mounted at /mnt/disk3Tb
+#
+# =============================================================================
+# USAGE
+# =============================================================================
+#
+# 1. Build the training image:
+#    docker compose -f docker/docker-compose.training.yml build
+#
+# 2. Start TensorBoard (in background):
+#    docker compose -f docker/docker-compose.training.yml up -d tensorboard
+#
+# 3. Run vanilla baseline training:
+#    docker compose -f docker/docker-compose.training.yml run --rm train-vanilla
+#
+# 4. Monitor training:
+#    - TensorBoard: http://localhost:6006
+#    - Logs: /mnt/disk3Tb/signformer-experiments/{experiment}/train.log
+#    - GPU: nvidia-smi -l 1
+#
+# 5. Run augmented training (after vanilla completes):
+#    docker compose -f docker/docker-compose.training.yml run --rm train-augmented
+#
+# =============================================================================
+# EXPERIMENT OUTPUT STRUCTURE
+# =============================================================================
+#
+# /mnt/disk3Tb/signformer-experiments/
+# ├── combined-vanilla/
+# │   ├── train.log              # Full training log
+# │   ├── config.yaml            # Config snapshot
+# │   ├── best.ckpt              # Best model checkpoint
+# │   ├── *.ckpt                 # Periodic checkpoints
+# │   ├── txt.vocab              # Text vocabulary
+# │   ├── gls.vocab              # Gloss vocabulary
+# │   ├── validations.txt        # Validation results
+# │   └── tensorboard/           # TensorBoard events
+# │       └── events.out.tfevents.*
+# └── combined-augmented/
+#     └── (same structure)
+#
+# =============================================================================
+
+version: "3.9"
+
+x-gpu-config: &gpu-config
+  runtime: nvidia
+  environment:
+    - NVIDIA_VISIBLE_DEVICES=all
+    - CUDA_VISIBLE_DEVICES=0
+    - TF_FORCE_GPU_ALLOW_GROWTH=true
+    - PYTHONUNBUFFERED=1
+
+x-volumes: &common-volumes
+  # Dataset directory (read-only)
+  - /mnt/disk3Tb/exported-slt-datasets:/app/PHOENIX2014T:ro
+  # Experiment output (read-write)
+  - /mnt/disk3Tb/signformer-experiments:/mnt/experiments
+  # Signformer code (for development/debugging)
+  - /home/pdalbianco/Github/Signformer:/app/Signformer
+
+services:
+  # ===========================================================================
+  # TENSORBOARD - Monitoring Dashboard
+  # ===========================================================================
+  # Access at: http://localhost:6006
+  # Shows: Loss curves, BLEU scores, learning rate, etc.
+  # ===========================================================================
+  tensorboard:
+    image: tensorflow/tensorflow:2.11.0
+    container_name: tensorboard-training
+    ports:
+      - "6006:6006"
+    volumes:
+      - /mnt/disk3Tb/signformer-experiments:/data:ro
+    command: >
+      tensorboard
+      --logdir=/data
+      --port=6006
+      --bind_all
+      --reload_multifile=true
+      --reload_interval=30
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  # ===========================================================================
+  # VANILLA BASELINE TRAINING
+  # ===========================================================================
+  # Combined training on all 5 datasets WITHOUT augmentation.
+  # Expected training time: ~2-3 days
+  # ===========================================================================
+  train-vanilla:
+    build:
+      context: ../
+      dockerfile: signformer/Dockerfile
+    image: signformer:training
+    container_name: train-vanilla
+    <<: *gpu-config
+    volumes: *common-volumes
+    working_dir: /app/Signformer
+    command: >
+      bash -c "
+        echo '========================================' &&
+        echo 'COMBINED VANILLA BASELINE TRAINING' &&
+        echo '========================================' &&
+        echo 'Start time:' $(date) &&
+        echo 'GPU:' $(nvidia-smi --query-gpu=name --format=csv,noheader) &&
+        echo 'Config: configs/combined_vanilla.yaml' &&
+        echo '========================================' &&
+        python -m main train configs/combined_vanilla.yaml 2>&1 | tee /mnt/experiments/combined-vanilla/train_$(date +%Y%m%d_%H%M%S).log
+      "
+    deploy:
+      resources:
+        limits:
+          memory: 28G
+        reservations:
+          memory: 16G
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    shm_size: '8gb'
+    ulimits:
+      memlock: -1
+      stack: 67108864
+
+  # ===========================================================================
+  # AUGMENTED TRAINING
+  # ===========================================================================
+  # Combined training on all 5 datasets WITH augmentation.
+  # Run after vanilla baseline completes for fair comparison.
+  # Expected training time: ~3-4 days (more data)
+  # ===========================================================================
+  train-augmented:
+    build:
+      context: ../
+      dockerfile: signformer/Dockerfile
+    image: signformer:training
+    container_name: train-augmented
+    <<: *gpu-config
+    volumes: *common-volumes
+    working_dir: /app/Signformer
+    command: >
+      bash -c "
+        echo '========================================' &&
+        echo 'COMBINED AUGMENTED TRAINING' &&
+        echo '========================================' &&
+        echo 'Start time:' $(date) &&
+        echo 'GPU:' $(nvidia-smi --query-gpu=name --format=csv,noheader) &&
+        echo 'Config: configs/combined_augmented.yaml' &&
+        echo '========================================' &&
+        python -m main train configs/combined_augmented.yaml 2>&1 | tee /mnt/experiments/combined-augmented/train_$(date +%Y%m%d_%H%M%S).log
+      "
+    deploy:
+      resources:
+        limits:
+          memory: 28G
+        reservations:
+          memory: 16G
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    shm_size: '8gb'
+    ulimits:
+      memlock: -1
+      stack: 67108864
+
+  # ===========================================================================
+  # INTERACTIVE SHELL (for debugging)
+  # ===========================================================================
+  # Usage: docker compose -f docker/docker-compose.training.yml run --rm shell
+  # ===========================================================================
+  shell:
+    build:
+      context: ../
+      dockerfile: signformer/Dockerfile
+    image: signformer:training
+    container_name: signformer-shell
+    <<: *gpu-config
+    volumes: *common-volumes
+    working_dir: /app/Signformer
+    stdin_open: true
+    tty: true
+    command: /bin/bash
+    deploy:
+      resources:
+        limits:
+          memory: 28G

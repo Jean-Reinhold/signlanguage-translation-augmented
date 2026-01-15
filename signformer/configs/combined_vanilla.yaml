@@ -1,0 +1,194 @@
+# =============================================================================
+# COMBINED VANILLA BASELINE TRAINING
+# =============================================================================
+#
+# ⚠️  WARNING: DISK SPACE CRITICAL - Only 29GB free!
+#     Before training, consider deleting old merged files:
+#     rm /mnt/disk3Tb/exported-slt-datasets/MERGE.pami0.*      (~86GB)
+#     rm /mnt/disk3Tb/exported-slt-datasets/ISL-MERGED.pami0.* (~78GB)
+#     See docs/RESOURCE_CONSTRAINTS.md for details.
+#
+# =============================================================================
+# 
+# Purpose: Train Signformer on all 5 datasets WITHOUT augmentation
+# This serves as the baseline to compare against augmented training.
+#
+# Architecture: MATCHES ORIGINAL SIGNFORMER (lightweight ~6M params)
+#   - 1-layer encoder/decoder (as in paper)
+#   - 256 hidden size (as in paper)
+#   - Proven to work on PHOENIX benchmark
+#
+# Datasets (all 1024 features):
+#   - RWTH-PHOENIX-2014T: German Sign Language (DGS) -> German
+#   - GSL: Greek Sign Language -> Greek
+#   - LSAT: Argentine Sign Language (LSA) -> Spanish
+#   - How2Sign-1024: American Sign Language (ASL) -> English (padded)
+#   - LSFB-CONT-1024: French Belgian Sign Language -> French (padded)
+#
+# Hardware Target:
+#   - GPU: NVIDIA RTX 3090 (24GB VRAM)
+#   - RAM: 31GB
+#   - CPU: 4 cores
+#
+# =============================================================================
+
+name: combined_vanilla_baseline
+
+data:
+    data_path: ../PHOENIX2014T
+    version: phoenix_2014_trans
+    sgn: sign
+    txt: text
+    gls: gloss
+    
+    # Combined training data (vanilla only)
+    train:
+      - RWTH_PHOENIX_2014T.pami0.train
+      - GSL.pami0.train
+      - LSAT.pami0.train
+      - How2Sign-1024.pami0.train      # Padded OpenPose -> 1024
+      - LSFB-CONT-1024.pami0.train     # Padded custom -> 1024
+    
+    # Validation: use PHOENIX as primary (most established benchmark)
+    dev:
+      - RWTH_PHOENIX_2014T.pami0.val
+    
+    # Test: evaluate on all datasets
+    test:
+      - RWTH_PHOENIX_2014T.pami0.test
+      - GSL.pami0.test
+      - LSAT.pami0.test
+      - How2Sign-1024.pami0.test
+      - LSFB-CONT-1024.pami0.test
+    
+    feature_size: 1024
+    level: word
+    txt_lowercase: true
+    max_sent_length: 400
+    random_train_subset: -1
+    random_dev_subset: -1
+    multimodal: 0.0
+    
+    # Memory-efficient streaming
+    stream_train_parts: true
+    stream_chunk_size: 3000           # Between original 5000 and conservative 2500
+    stream_dev_parts: true
+    stream_test_parts: true
+
+training:
+    # Checkpoint management
+    reset_best_ckpt: true
+    reset_scheduler: true
+    reset_optimizer: true
+    random_seed: 42
+    
+    # Output directory (mounted volume)
+    model_dir: "/mnt/experiments/combined-vanilla"
+    
+    # Loss configuration (translation only, no gloss recognition)
+    recognition_loss_weight: 0.0
+    translation_loss_weight: 1.0
+    
+    # Evaluation
+    eval_metric: bleu
+    early_stopping_metric: eval_metric
+    
+    # Optimizer: SophiaG (as in original Signformer)
+    optimizer: sophiag
+    learning_rate: 0.0004             # Same as original
+    betas:
+      - 0.95                          # Same as original
+      - 0.998
+    weight_decay: 0.003               # Same as original
+    
+    # Batch configuration (same as original)
+    batch_size: 32
+    batch_type: sentence
+    batch_multiplier: 1               # Same as original (no accumulation)
+    translation_normalization: batch
+    
+    # Training schedule
+    epochs: 1000                      # Same as original
+    scheduling: plateau
+    learning_rate_min: 1.0e-06        # Same as original
+    patience: 10                      # Same as original
+    decrease_factor: 0.8              # Same as original
+    warmup_step: 1000                 # Same as original
+    
+    # Regularization
+    label_smoothing: 0.1              # Same as original
+    
+    # SophiaG specific (from original)
+    lr_s_dim_model: 256
+    K: 2
+    
+    # Logging and checkpoints
+    logging_freq: 100                 # Same as original
+    validation_freq: 100              # Same as original
+    num_valid_log: 6                  # Same as original
+    keep_last_ckpts: 2                # Reduced for disk space
+    
+    # Beam search during validation
+    eval_recognition_beam_size: 1
+    eval_translation_beam_size: 1
+    eval_translation_beam_alpha: -1
+    translation_max_output_length: 30 # Same as original
+    
+    # Runtime
+    overwrite: false
+    shuffle: true
+    use_cuda: true
+
+# =============================================================================
+# MODEL: ORIGINAL SIGNFORMER ARCHITECTURE (~6M params)
+# =============================================================================
+# This is the lightweight architecture from the paper that achieved
+# competitive results with much larger models.
+# =============================================================================
+model:
+    initializer: xavier
+    bias_initializer: zeros
+    init_gain: 1.0
+    embed_initializer: xavier
+    embed_init_gain: 1.0
+    tied_softmax: false
+    cope: false
+    
+    encoder:
+        type: transformer
+        num_layers: 1                 # ORIGINAL: 1 layer (lightweight)
+        num_heads: 8
+        embeddings:
+            embedding_dim: 256        # ORIGINAL: 256
+            scale: false
+            dropout: 0.1              # ORIGINAL: 0.1
+            norm_type: batch
+            activation_type: softsign
+        hidden_size: 256              # ORIGINAL: 256
+        ff_size: 1024                 # ORIGINAL: 1024
+        dropout: 0.1
+    
+    decoder:
+        type: transformer
+        num_layers: 1                 # ORIGINAL: 1 layer (lightweight)
+        num_heads: 8
+        embeddings:
+            embedding_dim: 256        # ORIGINAL: 256
+            scale: false
+            dropout: 0.1              # ORIGINAL: 0.1
+            norm_type: batch
+            activation_type: softsign
+        hidden_size: 256              # ORIGINAL: 256
+        ff_size: 1024                 # ORIGINAL: 1024
+        dropout: 0.1
+
+testing:
+    recognition_beam_sizes:
+      - 1
+    translation_beam_sizes:
+      - 1
+      - 5
+    translation_beam_alphas:
+      - -1
+      - 0
+      - 1
