@@ -1,0 +1,16 @@
+# Lightweight Python image for export scripts
+FROM python:3.9-slim
+
+WORKDIR /app
+
+# Install minimal dependencies
+RUN pip install --no-cache-dir \
+    numpy==1.24.3 \
+    pandas==2.0.3 \
+    tqdm==4.66.1 \
+    && pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
+# Copy export scripts
+COPY src/export/ /app/export/
+
+CMD ["tail", "-f", "/dev/null"]

@@ -14,7 +14,7 @@
 #   docker compose -f docker-compose.augmentation.yml --profile all up --build
 #
 #   # Run specific dataset:
-#   docker compose -f docker-compose.augmentation.yml up lsat
+#   docker compose -f docker-compose.augmentation.yml up lsfb_cont --build
 #
 
 services:
@@ -42,10 +42,10 @@ services:
 
   # ============================================
   # LSA-T (Argentine Sign Language - Spanish)
-  # 🔧 Fixed: Use LSAT (uppercase) directory
+  # ✅ Completed: → 15,077 samples
   # ============================================
   lsat:
-    profiles: ["pending", "all"]
+    profiles: ["all"]
     build:
       context: .
       dockerfile: docker/augmentation/Dockerfile
@@ -64,10 +64,10 @@ services:
 
   # ============================================
   # How2Sign (American Sign Language - English)
-  # 🔧 Fixed: Created annotations.csv (35,263 samples)
+  # ✅ Completed: → 88,855 samples
   # ============================================
   how2sign:
-    profiles: ["pending", "all"]
+    profiles: ["all"]
     build:
       context: .
       dockerfile: docker/augmentation/Dockerfile
@@ -82,17 +82,14 @@ services:
       - /mnt/disk3Tb/slt-datasets:/mnt/disk3Tb/slt-datasets:ro
       - /mnt/disk3Tb/augmented-slt-datasets:/mnt/disk3Tb/augmented-slt-datasets
     command: ["bash", "-c", "echo '🧹 Cleaning output directory for How2Sign...' && rm -rf /mnt/disk3Tb/augmented-slt-datasets/How2Sign && echo '🚀 Starting augmentation for How2Sign...' && python -m src.augmentation.augment_dataset --dataset How2Sign --num-variants 2 --batch-size 500 --summary-report"]
-    depends_on:
-      lsat:
-        condition: service_completed_successfully
     restart: "no"
 
   # ============================================
   # ISL (Indian Sign Language - English)
-  # 🔧 Fixed: NaN text filtering (125,598 valid samples)
+  # ✅ Completed: → 331,975 samples
   # ============================================
   isl:
-    profiles: ["pending", "all"]
+    profiles: ["all"]
     build:
       context: .
       dockerfile: docker/augmentation/Dockerfile
@@ -107,14 +104,11 @@ services:
       - /mnt/disk3Tb/slt-datasets:/mnt/disk3Tb/slt-datasets:ro
       - /mnt/disk3Tb/augmented-slt-datasets:/mnt/disk3Tb/augmented-slt-datasets
     command: ["bash", "-c", "echo '🧹 Cleaning output directory for ISL...' && rm -rf /mnt/disk3Tb/augmented-slt-datasets/ISL && echo '🚀 Starting augmentation for ISL...' && python -m src.augmentation.augment_dataset --dataset ISL --num-variants 2 --batch-size 500 --summary-report"]
-    depends_on:
-      how2sign:
-        condition: service_completed_successfully
     restart: "no"
 
   # ============================================
   # LSFB-CONT (Belgian French Sign Language)
-  # 🔧 Fixed: Created annotations.csv from JSON (5,727 samples)
+  # ⚠️ PENDING: 5,985 samples to augment
   # ============================================
   lsfb_cont:
     profiles: ["pending", "all"]
@@ -132,14 +126,11 @@ services:
       - /mnt/disk3Tb/slt-datasets:/mnt/disk3Tb/slt-datasets:ro
       - /mnt/disk3Tb/augmented-slt-datasets:/mnt/disk3Tb/augmented-slt-datasets
     command: ["bash", "-c", "echo '🧹 Cleaning output directory for LSFB-CONT...' && rm -rf /mnt/disk3Tb/augmented-slt-datasets/LSFB-CONT && echo '🚀 Starting augmentation for LSFB-CONT...' && python -m src.augmentation.augment_dataset --dataset LSFB-CONT --num-variants 2 --batch-size 500 --summary-report"]
-    depends_on:
-      isl:
-        condition: service_completed_successfully
     restart: "no"
 
   # ============================================
   # GSL (Greek Sign Language)
-  # ✅ Already completed: 8,821 → 12,058 samples
+  # ✅ Completed: 8,821 → 12,059 samples
   # ============================================
   gsl:
     profiles: ["all"]

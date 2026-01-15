@@ -1,0 +1,72 @@
+# Docker Compose for safe export with memory limits
+# Run ONE at a time: docker compose -f docker/docker-compose.export.yml run --rm <service>
+#
+# Order to run:
+# 1. export-lsfb-aug     (LSFB-CONT augmented - the one that crashed)
+# 2. export-how2sign     (How2Sign vanilla)  
+# 3. export-how2sign-aug (How2Sign augmented)
+
+version: "3.9"
+
+services:
+  # LSFB-CONT Augmented (pending - crashed before)
+  export-lsfb-aug:
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile.export
+    image: slt-export:latest
+    container_name: export-lsfb-aug
+    volumes:
+      - /mnt/disk3Tb/slt-datasets:/mnt/disk3Tb/slt-datasets:ro
+      - /mnt/disk3Tb/augmented-slt-datasets:/mnt/disk3Tb/augmented-slt-datasets:ro
+      - /mnt/disk3Tb/exported-slt-datasets:/mnt/disk3Tb/exported-slt-datasets
+    command: ["python", "/app/export/export_lsfb_cont_1024.py", "--augmented"]
+    deploy:
+      resources:
+        limits:
+          memory: 16G
+        reservations:
+          memory: 2G
+    mem_limit: 16g
+    memswap_limit: 20g
+
+  # How2Sign Vanilla
+  export-how2sign:
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile.export
+    image: slt-export:latest
+    container_name: export-how2sign
+    volumes:
+      - /mnt/disk3Tb/slt-datasets:/mnt/disk3Tb/slt-datasets:ro
+      - /mnt/disk3Tb/exported-slt-datasets:/mnt/disk3Tb/exported-slt-datasets
+    command: ["python", "/app/export/export_how2sign_1024.py"]
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 1G
+    mem_limit: 4g
+    memswap_limit: 6g
+
+  # How2Sign Augmented
+  export-how2sign-aug:
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile.export
+    image: slt-export:latest
+    container_name: export-how2sign-aug
+    volumes:
+      - /mnt/disk3Tb/slt-datasets:/mnt/disk3Tb/slt-datasets:ro
+      - /mnt/disk3Tb/augmented-slt-datasets:/mnt/disk3Tb/augmented-slt-datasets:ro
+      - /mnt/disk3Tb/exported-slt-datasets:/mnt/disk3Tb/exported-slt-datasets
+    command: ["python", "/app/export/export_how2sign_1024.py", "--augmented"]
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 1G
+    mem_limit: 4g
+    memswap_limit: 6g
