@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import torch
+import gc
 
 torch.backends.cudnn.deterministic = True
 
@@ -633,7 +634,10 @@ class TrainManager:
                         yield b
                         batch_count += 1
                     
+                    # Explicit memory cleanup to prevent OOM
                     del dataset_chunk
+                    del data_iter
+                    del examples
                     del mixed_batch
                     
                     # Refill depleted buffers
@@ -641,11 +645,15 @@ class TrainManager:
                         if len(buffers[name]) < BUFFER_SIZE_PER_DATASET // 2:
                             _refill_buffer(name)
                     
-                    # Log progress periodically
+                    # Log progress and clean memory periodically
                     if batch_count % 100 == 0:
                         active_info = {n: len(buffers[n]) for n in active_datasets}
                         self.logger.info("[train] Batch %d, active buffers: %s", 
                                        batch_count, active_info)
+                        # Force garbage collection and clear GPU cache to prevent memory growth
+                        gc.collect()
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
                 
                 # Final stats
                 self.logger.info("[train] Epoch complete: %d batches", batch_count)
@@ -716,6 +724,9 @@ class TrainManager:
                     )
                     epoch_translation_loss += translation_loss.detach().cpu().numpy()
 
+                # Clean up batch to free memory
+                del batch
+                
                 count = self.batch_multiplier if update else count
                 count -= 1
 
@@ -1081,6 +1092,12 @@ class TrainManager:
                         self._store_outputs(
                             "references.dev.txt", valid_seq, val_res["txt_ref"]
                         )
+                    
+                    # Clean up validation results to free memory
+                    del val_res
+                    gc.collect()
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
 
                 if self.stop:
                     break

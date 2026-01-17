@@ -87,7 +87,7 @@ data:
     # Set a fixed number of interleaved batches per epoch (adjust if dataset sizes change)
     interleaved_epoch_batches: 1700
     # Buffer size per dataset for interleaved training (samples kept in memory)
-    # Keep small to prevent memory growth during training
+    # With memory fixes (gc + cache clear), we can use larger buffers for better mixing
     interleaved_buffer_size: 100
 
 training:
@@ -112,9 +112,9 @@ training:
       - 0.998
     weight_decay: 0.003
     
-    batch_size: 4
+    batch_size: 8
     batch_type: sentence
-    batch_multiplier: 8  # 4 × 8 = 32 effective batch size (same behavior, even less memory)
+    batch_multiplier: 4  # 8 × 4 = 32 effective batch size
     translation_normalization: batch
     
     epochs: 1000
