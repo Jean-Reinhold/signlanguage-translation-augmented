@@ -86,6 +86,10 @@ data:
     interleaved_repeat: true
     # Set a fixed number of interleaved batches per epoch (adjust if dataset sizes change)
     interleaved_epoch_batches: 1700
+    # Buffer size per dataset for interleaved training (samples kept in memory)
+    # Lower values reduce RAM usage: 300 × 5 datasets ≈ 2.4GB vs 1000 × 5 ≈ 8GB
+    # 300 provides good mixing while being memory-efficient for 24GB systems
+    interleaved_buffer_size: 300
 
 training:
     # Same as vanilla for fair comparison
@@ -136,7 +140,7 @@ training:
     eval_translation_beam_alpha: -1
     translation_max_output_length: 30
     
-    overwrite: false
+    overwrite: true
     shuffle: true
     use_cuda: true
 

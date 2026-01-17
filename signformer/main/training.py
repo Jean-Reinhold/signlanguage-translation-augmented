@@ -178,6 +178,9 @@ class TrainManager:
         self.lang_token_map = config["data"].get("lang_token_map", {}) or {}
         self.interleaved_repeat = config["data"].get("interleaved_repeat", False)
         self.interleaved_epoch_batches = config["data"].get("interleaved_epoch_batches", None)
+        # Buffer size per dataset for interleaved training (default 300 for memory efficiency)
+        # Lower values use less RAM but may reduce mixing quality
+        self.interleaved_buffer_size = config["data"].get("interleaved_buffer_size", 300)
         if self.interleaved_repeat and not self.interleaved_epoch_batches:
             self.logger.warning(
                 "interleaved_repeat is enabled without interleaved_epoch_batches; "
@@ -439,10 +442,13 @@ class TrainManager:
                 # PHASE 1: Pre-fill buffers from all datasets
                 # =========================================================
                 # We maintain a buffer for each dataset and refill as needed.
-                # Buffer size is chosen to allow good mixing while managing memory.
+                # Buffer size is configurable to manage memory usage.
+                # Default 300 balances mixing quality with memory efficiency.
+                # With 5 datasets × 300 samples × ~1.6MB/sample = ~2.4GB
                 # =========================================================
                 
-                BUFFER_SIZE_PER_DATASET = 1000  # Samples to keep in memory per dataset
+                # Configurable buffer size (default reduced from 1000 to 300 for memory)
+                BUFFER_SIZE_PER_DATASET = getattr(self, 'interleaved_buffer_size', 300)
                 
                 # Create sample generators for each dataset
                 def _create_sample_generator(dataset_name):
