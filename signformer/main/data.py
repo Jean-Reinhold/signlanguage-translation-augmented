@@ -7,8 +7,8 @@ import sys
 import random
 
 import torch
-from torchtext.legacy import data
-from torchtext.legacy.data import Dataset, Iterator
+from torchtext import data
+from torchtext.data import Dataset, Iterator
 import socket
 from main.dataset import SignTranslationDataset, iter_dataset_file
 import logging
@@ -54,7 +54,11 @@ def load_data(data_cfg: dict) -> (Dataset, Dataset, Dataset, Vocabulary, Vocabul
         train_paths = [os.path.join(data_path, x) for x in data_cfg["train"]]
         dev_paths = [os.path.join(data_path, x) for x in data_cfg["dev"]]
         test_paths = [os.path.join(data_path, x) for x in data_cfg["test"]]
-        pad_feature_size = sum(data_cfg["feature_size"])
+        # Handle both list (multimodal) and int (multi-dataset same features) for feature_size
+        if isinstance(data_cfg["feature_size"], list):
+            pad_feature_size = sum(data_cfg["feature_size"])
+        else:
+            pad_feature_size = data_cfg["feature_size"]
 
     else:
         train_paths = os.path.join(data_path, data_cfg["train"])
@@ -134,42 +138,55 @@ def load_data(data_cfg: dict) -> (Dataset, Dataset, Dataset, Vocabulary, Vocabul
 
         # Tokenize helper for streaming
         def _yield_tokens(paths, field_name):
+            import glob as _glob
             yielded = 0
             samples_seen = 0
             for p in paths if isinstance(paths, list) else [paths]:
-                logger.info("[data] Streaming tokens from %s (%s)", p, field_name)
-                # Read gzip pickles chunk-by-chunk and drop heavy fields immediately
+                # Check if file exists directly or as parts
                 import gzip as _gzip
                 import pickle as _pickle
-                with _gzip.open(p, "rb") as _f:
-                    while True:
-                        try:
-                            _obj = _pickle.load(_f)
-                        except EOFError:
-                            break
-                        # _obj can be a list of samples or a single sample
-                        if isinstance(_obj, list):
-                            iterable = _obj
-                        else:
-                            iterable = [_obj]
-                        for _s in iterable:
-                            samples_seen += 1
-                            # extract text/gloss, then drop heavy tensor to free RAM early
-                            _text = _s["text"].strip() if field_name == "txt" else _s["gloss"].strip()
-                            if "sign" in _s:
-                                try:
-                                    del _s["sign"]
-                                except Exception:
-                                    pass
-                            if level == "char":
-                                _tokens = list(_text)
+                if os.path.exists(p):
+                    files_to_read = [p]
+                else:
+                    # Look for .part* files
+                    part_pattern = p + ".part*"
+                    files_to_read = sorted(_glob.glob(part_pattern), key=lambda x: int(x.rsplit('.part', 1)[1]) if '.part' in x else 0)
+                    if not files_to_read:
+                        raise FileNotFoundError(f"No file or parts found for: {p}")
+                    logger.info("[data] Found %d parts for %s", len(files_to_read), p)
+                
+                for part_file in files_to_read:
+                    logger.info("[data] Streaming tokens from %s (%s)", part_file, field_name)
+                    # Read gzip pickles chunk-by-chunk and drop heavy fields immediately
+                    with _gzip.open(part_file, "rb") as _f:
+                        while True:
+                            try:
+                                _obj = _pickle.load(_f)
+                            except EOFError:
+                                break
+                            # _obj can be a list of samples or a single sample
+                            if isinstance(_obj, list):
+                                iterable = _obj
                             else:
-                                _tokens = _text.split()
-                            for t in _tokens:
-                                yielded += 1
-                                if yielded % 1000000 == 0:
-                                    logger.info("[data] Streamed %d tokens (%s)", yielded, field_name)
-                                yield t
+                                iterable = [_obj]
+                            for _s in iterable:
+                                samples_seen += 1
+                                # extract text/gloss, then drop heavy tensor to free RAM early
+                                _text = _s["text"].strip() if field_name == "txt" else _s["gloss"].strip()
+                                if "sign" in _s:
+                                    try:
+                                        del _s["sign"]
+                                    except Exception:
+                                        pass
+                                if level == "char":
+                                    _tokens = list(_text)
+                                else:
+                                    _tokens = _text.split()
+                                for t in _tokens:
+                                    yielded += 1
+                                    if yielded % 1000000 == 0:
+                                        logger.info("[data] Streamed %d tokens (%s)", yielded, field_name)
+                                    yield t
 
         # Build vocabs either from files or by streaming tokens
         if gls_vocab_file is not None:

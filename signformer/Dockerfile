@@ -56,10 +56,7 @@ ENV PYTHONUNBUFFERED=1
 ENV TF_CPP_MIN_LOG_LEVEL=2
 
 # Copy Signformer code
-COPY Signformer/ /app/Signformer/
-
-# Copy custom configs
-COPY signformer/configs/ /app/Signformer/configs/
+COPY signformer/ /app/Signformer/
 
 WORKDIR /app/Signformer
 

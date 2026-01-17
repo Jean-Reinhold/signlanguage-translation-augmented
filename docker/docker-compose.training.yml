@@ -73,7 +73,7 @@ x-volumes: &common-volumes
   # Experiment output (read-write)
   - /mnt/disk3Tb/signformer-experiments:/mnt/experiments
   # Signformer code (for development/debugging)
-  - /home/pdalbianco/Github/Signformer:/app/Signformer
+  - /home/pdalbianco/Github/signlanguage-translation-augmented/signformer:/app/Signformer
 
 services:
   # ===========================================================================
@@ -110,7 +110,7 @@ services:
   # ===========================================================================
   train-vanilla:
     build:
-      context: ../
+      context: ..
       dockerfile: signformer/Dockerfile
     image: signformer:training
     container_name: train-vanilla
@@ -152,7 +152,7 @@ services:
   # ===========================================================================
   train-augmented:
     build:
-      context: ../
+      context: ..
       dockerfile: signformer/Dockerfile
     image: signformer:training
     container_name: train-augmented
@@ -192,7 +192,7 @@ services:
   # ===========================================================================
   shell:
     build:
-      context: ../
+      context: ..
       dockerfile: signformer/Dockerfile
     image: signformer:training
     container_name: signformer-shell

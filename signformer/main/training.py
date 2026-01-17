@@ -24,17 +24,18 @@ from main.helpers import (
 )
 from main.model import SignModel
 from main.prediction import validate_on_data
+from main.dataset import SignTranslationDataset
 from main.loss import XentLoss
 from main.data import load_data, make_data_iter
 from main.dataset import iter_dataset_file
-from torchtext.legacy import data as ttdata
+from torchtext import data as ttdata
 from main.builders import build_optimizer, build_scheduler, build_gradient_clipper
 from main.prediction import test
 from main.metrics import wer_single
-from main.vocabulary import SIL_TOKEN
+from main.vocabulary import SIL_TOKEN, PAD_TOKEN, BOS_TOKEN, EOS_TOKEN, UNK_TOKEN
 from torch import Tensor
-from tensorboardX import SummaryWriter
-from torchtext.legacy.data import Dataset
+from torch.utils.tensorboard import SummaryWriter
+from torchtext.data import Dataset
 from typing import List, Dict
 
 # pylint: disable=too-many-instance-attributes
@@ -58,7 +59,7 @@ class TrainManager:
         self.logger = make_logger(model_dir=self.model_dir)
         self.logging_freq = train_config.get("logging_freq", 100)
         self.valid_report_file = "{}/validations.txt".format(self.model_dir)
-        self.tb_writer = SummaryWriter(logdir=self.model_dir + "/tensorboard/")
+        self.tb_writer = SummaryWriter(log_dir=self.model_dir + "/tensorboard/")
 
         # input
         self.feature_size = (
@@ -160,6 +161,13 @@ class TrainManager:
         self.max_sent_length = config["data"].get("max_sent_length", 400)
         # Chunk size when streaming training data
         self.stream_chunk_size = config["data"].get("stream_chunk_size", 5000)
+        
+        # Temperature-based sampling for multilingual training (v5 feature)
+        # T=1: proportional to dataset size (large datasets dominate)
+        # T=5: balanced (standard for multilingual, e.g., mT5, mBART)
+        # T=∞: uniform sampling
+        self.sampling_temperature = config["data"].get("sampling_temperature", 5.0)
+        self.logger.info("Multilingual sampling temperature: %.1f", self.sampling_temperature)
 
         self.shuffle = train_config.get("shuffle", True)
         self.epochs = train_config["epochs"]
@@ -345,6 +353,19 @@ class TrainManager:
         # move parameters to cuda
         if self.use_cuda:
             self.model.cuda()
+        
+        # Per-language validation (v4 feature)
+        self.dev_per_language = {}  # Dict[str, Dataset]
+    
+    def set_per_language_validation(self, dev_per_language: dict) -> None:
+        """
+        Set per-language validation datasets for multilingual training.
+        
+        :param dev_per_language: Dict mapping language name to validation dataset
+        """
+        self.dev_per_language = dev_per_language
+        self.logger.info("Per-language validation enabled for %d languages: %s",
+                        len(dev_per_language), list(dev_per_language.keys()))
 
     def train_and_validate(self,  train_data: Dataset, valid_data: Dataset) -> None:
         """
@@ -359,79 +380,227 @@ class TrainManager:
                 paths = train_data["paths"]
                 fields = train_data["fields"]
                 paths = paths if isinstance(paths, list) else [paths]
+                named_fields = [
+                    ("sequence", fields[0]),
+                    ("signer", fields[1]),
+                    ("sgn", fields[2]),
+                    ("gls", fields[3]),
+                    ("txt", fields[4]),
+                ]
+                
+                # =========================================================
+                # TRUE INTERLEAVED MULTILINGUAL BATCHING (v6)
+                # =========================================================
+                # Each batch contains samples from ALL languages to prevent
+                # catastrophic forgetting. Uses temperature-weighted sampling
+                # to balance high and low-resource languages.
+                # =========================================================
+                
+                import random
+                import os
+                
+                # Group paths by dataset/language
+                dataset_paths = {}
                 for p in paths:
-                    self.logger.info("[train] Streaming shard %s", p)
-                    buffer = []
-                    named_fields = [
-                        ("sequence", fields[0]),
-                        ("signer", fields[1]),
-                        ("sgn", fields[2]),
-                        ("gls", fields[3]),
-                        ("txt", fields[4]),
-                    ]
-                    for s in iter_dataset_file(p):
-                        txt = s["text"].strip()
-                        txt_len = len(list(txt)) if self.level == "char" else len(txt.split())
-                        if len(s["sign"]) <= self.max_sent_length and txt_len <= self.max_sent_length:
-                            buffer.append(s)
-                        if len(buffer) >= self.stream_chunk_size:
-                            self.logger.info("[train] Building chunk with %d samples", len(buffer))
-                            # Build a temporary torchtext Dataset chunk
-                            examples = []
-                            for smp in buffer:
-                                examples.append(
-                                    ttdata.Example.fromlist(
-                                        [
-                                            smp["name"],
-                                            smp["signer"],
-                                            smp["sign"] + 1e-8,
-                                            smp["gloss"].strip(),
-                                            smp["text"].strip(),
-                                        ],
-                                        named_fields,
-                                    )
-                                )
-                            dataset_chunk = ttdata.Dataset(examples, named_fields)
-                            data_iter = make_data_iter(
-                                dataset_chunk,
-                                batch_size=self.batch_size,
-                                batch_type=self.batch_type,
-                                train=True,
-                                shuffle=self.shuffle,
-                            )
-                            self.logger.info("[train] Iterating chunk batches")
-                            for b in iter(data_iter):
-                                yield b
-                            del dataset_chunk
-                            buffer = []
-                    if buffer:
-                        self.logger.info("[train] Building final chunk with %d samples", len(buffer))
-                        examples = []
-                        for smp in buffer:
-                            examples.append(
-                                ttdata.Example.fromlist(
-                                    [
-                                        smp["name"],
-                                        smp["signer"],
-                                        smp["sign"] + 1e-8,
-                                        smp["gloss"].strip(),
-                                        smp["text"].strip(),
-                                    ],
-                                    named_fields,
-                                )
-                            )
-                        dataset_chunk = ttdata.Dataset(examples, named_fields)
-                        data_iter = make_data_iter(
-                            dataset_chunk,
-                            batch_size=self.batch_size,
-                            batch_type=self.batch_type,
-                            train=True,
-                            shuffle=self.shuffle,
+                    basename = os.path.basename(p)
+                    # Extract dataset name (handle .part* files)
+                    if ".pami0" in basename:
+                        dataset_name = basename.split(".pami0")[0]
+                    else:
+                        dataset_name = basename.split(".")[0]
+                    if dataset_name not in dataset_paths:
+                        dataset_paths[dataset_name] = []
+                    dataset_paths[dataset_name].append(p)
+                
+                n_datasets = len(dataset_paths)
+                self.logger.info("[train] Interleaved batching across %d datasets: %s", 
+                               n_datasets, list(dataset_paths.keys()))
+                
+                # =========================================================
+                # PHASE 1: Pre-fill buffers from all datasets
+                # =========================================================
+                # We maintain a buffer for each dataset and refill as needed.
+                # Buffer size is chosen to allow good mixing while managing memory.
+                # =========================================================
+                
+                BUFFER_SIZE_PER_DATASET = 1000  # Samples to keep in memory per dataset
+                
+                # Create sample generators for each dataset
+                def _create_sample_generator(dataset_name):
+                    """Generator that yields filtered samples from a dataset."""
+                    for p in dataset_paths[dataset_name]:
+                        self.logger.info("[train] Loading %s from %s", dataset_name, p)
+                        for s in iter_dataset_file(p):
+                            txt = s["text"].strip()
+                            txt_len = len(list(txt)) if self.level == "char" else len(txt.split())
+                            if len(s["sign"]) <= self.max_sent_length and txt_len <= self.max_sent_length:
+                                yield s
+                
+                # Initialize generators and buffers
+                generators = {name: _create_sample_generator(name) for name in dataset_paths}
+                buffers = {name: [] for name in dataset_paths}
+                active_datasets = set(dataset_paths.keys())
+                samples_yielded = {name: 0 for name in dataset_paths}
+                
+                def _refill_buffer(name, target_size=BUFFER_SIZE_PER_DATASET):
+                    """Refill a dataset's buffer up to target_size."""
+                    if name not in active_datasets:
+                        return False
+                    try:
+                        while len(buffers[name]) < target_size:
+                            sample = next(generators[name])
+                            buffers[name].append(sample)
+                        return True
+                    except StopIteration:
+                        if not buffers[name]:
+                            active_datasets.discard(name)
+                            self.logger.info("[train] Dataset %s exhausted (%d samples)", 
+                                           name, samples_yielded[name])
+                        return len(buffers[name]) > 0
+                
+                # Initial buffer fill
+                for name in list(active_datasets):
+                    _refill_buffer(name)
+                    self.logger.info("[train] Initial buffer for %s: %d samples", 
+                                   name, len(buffers[name]))
+                
+                # Calculate temperature-weighted sampling probabilities
+                T = getattr(self, 'sampling_temperature', 5.0)
+                
+                def _calc_sampling_weights():
+                    """Calculate temperature-scaled sampling weights."""
+                    if not active_datasets:
+                        return {}
+                    sizes = {n: max(len(buffers[n]), 1) for n in active_datasets}
+                    # p(i) ∝ n_i^(1/T) - higher T = more uniform, lower T = more proportional
+                    weights = {n: sizes[n] ** (1.0 / T) for n in active_datasets}
+                    total = sum(weights.values())
+                    return {n: w / total for n, w in weights.items()}
+                
+                # Log initial probabilities
+                weights = _calc_sampling_weights()
+                self.logger.info("[train] Temperature=%.1f, sampling weights: %s", 
+                               T, {n: f"{w:.1%}" for n, w in weights.items()})
+                
+                # =========================================================
+                # PHASE 2: Generate interleaved batches
+                # =========================================================
+                # For each batch, sample from ALL active datasets proportionally.
+                # This ensures every gradient update sees all languages.
+                # =========================================================
+                
+                batch_count = 0
+                samples_per_batch = self.batch_size
+                
+                while active_datasets:
+                    # Build a mixed batch from all active datasets
+                    mixed_batch = []
+                    weights = _calc_sampling_weights()
+                    
+                    if not weights:
+                        break
+                    
+                    # Calculate how many samples to take from each dataset
+                    # Ensure at least 1 sample from each active dataset
+                    n_active = len(active_datasets)
+                    min_per_dataset = max(1, samples_per_batch // (n_active * 2))
+                    remaining = samples_per_batch
+                    
+                    samples_to_take = {}
+                    for name in active_datasets:
+                        # Take proportional amount based on weights
+                        n_samples = max(min_per_dataset, int(samples_per_batch * weights[name]))
+                        # But don't exceed what's available
+                        n_samples = min(n_samples, len(buffers[name]))
+                        samples_to_take[name] = n_samples
+                    
+                    # Adjust to hit exact batch size
+                    total_planned = sum(samples_to_take.values())
+                    if total_planned < samples_per_batch:
+                        # Add more from largest buffers
+                        deficit = samples_per_batch - total_planned
+                        sorted_by_buffer = sorted(active_datasets, 
+                                                 key=lambda n: len(buffers[n]), reverse=True)
+                        for name in sorted_by_buffer:
+                            can_add = len(buffers[name]) - samples_to_take[name]
+                            add = min(can_add, deficit)
+                            samples_to_take[name] += add
+                            deficit -= add
+                            if deficit <= 0:
+                                break
+                    
+                    # Extract samples from each buffer
+                    for name, n_samples in samples_to_take.items():
+                        if n_samples > 0 and buffers[name]:
+                            # Random sample from buffer
+                            random.shuffle(buffers[name])
+                            taken = buffers[name][:n_samples]
+                            buffers[name] = buffers[name][n_samples:]
+                            mixed_batch.extend(taken)
+                            samples_yielded[name] += n_samples
+                    
+                    # Skip if batch is too small
+                    if len(mixed_batch) < self.batch_size // 2:
+                        # Try to refill and continue
+                        any_refilled = False
+                        for name in list(active_datasets):
+                            if _refill_buffer(name):
+                                any_refilled = True
+                        if not any_refilled and not mixed_batch:
+                            break
+                        if not mixed_batch:
+                            continue
+                    
+                    # Shuffle the mixed batch to interleave languages
+                    random.shuffle(mixed_batch)
+                    
+                    # Convert to torchtext examples
+                    examples = [
+                        ttdata.Example.fromlist(
+                            [
+                                smp["name"],
+                                smp["signer"],
+                                smp["sign"] + 1e-8,
+                                smp["gloss"].strip(),
+                                smp["text"].strip(),
+                            ],
+                            named_fields,
                         )
-                        self.logger.info("[train] Iterating final chunk batches")
-                        for b in iter(data_iter):
-                            yield b
-                        del dataset_chunk
+                        for smp in mixed_batch
+                    ]
+                    
+                    # Create dataset and iterator
+                    dataset_chunk = ttdata.Dataset(examples, named_fields)
+                    data_iter = make_data_iter(
+                        dataset_chunk,
+                        batch_size=self.batch_size,
+                        batch_type=self.batch_type,
+                        train=True,
+                        shuffle=False,  # Already shuffled
+                    )
+                    
+                    for b in iter(data_iter):
+                        yield b
+                        batch_count += 1
+                    
+                    del dataset_chunk
+                    del mixed_batch
+                    
+                    # Refill depleted buffers
+                    for name in list(active_datasets):
+                        if len(buffers[name]) < BUFFER_SIZE_PER_DATASET // 2:
+                            _refill_buffer(name)
+                    
+                    # Log progress periodically
+                    if batch_count % 100 == 0:
+                        active_info = {n: len(buffers[n]) for n in active_datasets}
+                        self.logger.info("[train] Batch %d, active buffers: %s", 
+                                       batch_count, active_info)
+                
+                # Final stats
+                self.logger.info("[train] Epoch complete: %d batches", batch_count)
+                self.logger.info("[train] Samples per dataset: %s", samples_yielded)
+                
             else:
                 data_iter = make_data_iter(
                     train_data,
@@ -636,6 +805,76 @@ class TrainManager:
                             val_res["valid_scores"]["bleu_scores"],
                             self.steps,
                         )
+
+                    # =========================================================
+                    # PER-LANGUAGE VALIDATION (v4 feature)
+                    # =========================================================
+                    if self.dev_per_language and self.do_translation:
+                        per_lang_bleu = {}
+                        per_lang_ppl = {}
+                        self.logger.info("=" * 60)
+                        self.logger.info("Per-Language Validation Results (Step %d):", self.steps)
+                        
+                        for lang_name, lang_data in self.dev_per_language.items():
+                            try:
+                                lang_res = validate_on_data(
+                                    model=self.model,
+                                    data=lang_data,
+                                    batch_size=self.eval_batch_size,
+                                    use_cuda=self.use_cuda,
+                                    batch_type=self.eval_batch_type,
+                                    dataset_version=self.dataset_version,
+                                    sgn_dim=self.feature_size,
+                                    txt_pad_index=self.txt_pad_index,
+                                    do_recognition=False,
+                                    recognition_loss_function=None,
+                                    recognition_loss_weight=None,
+                                    recognition_beam_size=None,
+                                    do_translation=True,
+                                    translation_loss_function=self.translation_loss_function,
+                                    translation_max_output_length=self.translation_max_output_length,
+                                    level=self.level,
+                                    translation_loss_weight=self.translation_loss_weight,
+                                    translation_beam_size=self.eval_translation_beam_size,
+                                    translation_beam_alpha=self.eval_translation_beam_alpha,
+                                    frame_subsampling_ratio=self.frame_subsampling_ratio,
+                                )
+                                
+                                lang_bleu = lang_res["valid_scores"]["bleu"]
+                                lang_ppl_val = lang_res["valid_ppl"]
+                                per_lang_bleu[lang_name] = lang_bleu
+                                per_lang_ppl[lang_name] = lang_ppl_val
+                                
+                                # Log to TensorBoard
+                                self.tb_writer.add_scalar(
+                                    f"valid_lang/{lang_name}/bleu", lang_bleu, self.steps
+                                )
+                                self.tb_writer.add_scalar(
+                                    f"valid_lang/{lang_name}/ppl", lang_ppl_val, self.steps
+                                )
+                                self.tb_writer.add_scalar(
+                                    f"valid_lang/{lang_name}/chrf", 
+                                    lang_res["valid_scores"]["chrf"], self.steps
+                                )
+                                
+                                self.logger.info(
+                                    "  %s: BLEU-4 %.2f | PPL %.2f | CHRF %.2f",
+                                    lang_name.ljust(10), lang_bleu, lang_ppl_val,
+                                    lang_res["valid_scores"]["chrf"]
+                                )
+                            except Exception as e:
+                                self.logger.warning("  %s: FAILED - %s", lang_name, str(e))
+                                per_lang_bleu[lang_name] = 0.0
+                                per_lang_ppl[lang_name] = float('inf')
+                        
+                        # Compute and log combined metrics (average)
+                        if per_lang_bleu:
+                            avg_bleu = sum(per_lang_bleu.values()) / len(per_lang_bleu)
+                            self.tb_writer.add_scalar("valid/avg_bleu_all_langs", avg_bleu, self.steps)
+                            self.logger.info("  %s: BLEU-4 %.2f (average)", "COMBINED".ljust(10), avg_bleu)
+                        
+                        self.logger.info("=" * 60)
+                        self.model.train()
 
                     if self.early_stopping_metric == "recognition_loss":
                         assert self.do_recognition
@@ -1105,6 +1344,92 @@ def train(cfg_file: str) -> None:
 
     # for training management, e.g. early stopping and model selection
     trainer = TrainManager(model=model, config=cfg)
+    
+    # =========================================================================
+    # LOAD PER-LANGUAGE VALIDATION DATASETS (v4 feature)
+    # =========================================================================
+    if "dev_per_language" in cfg["data"] and cfg["data"]["dev_per_language"]:
+        from torchtext import data as ttdata
+        import torch
+        
+        data_path = cfg["data"].get("data_path", "./data")
+        pad_feature_size = (
+            sum(cfg["data"]["feature_size"]) 
+            if isinstance(cfg["data"]["feature_size"], list)
+            else cfg["data"]["feature_size"]
+        )
+        level = cfg["data"]["level"]
+        txt_lowercase = cfg["data"]["txt_lowercase"]
+        max_sent_length = cfg["data"]["max_sent_length"]
+        
+        def tokenize_text(text):
+            if level == "char":
+                return list(text)
+            return text.split()
+        
+        def tokenize_features(features):
+            ft_list = torch.split(features, 1, dim=0)
+            return [ft.squeeze() for ft in ft_list]
+        
+        def stack_features(features, something):
+            return torch.stack([torch.stack(ft, dim=0) for ft in features], dim=0)
+        
+        sequence_field = ttdata.RawField()
+        signer_field = ttdata.RawField()
+        sgn_field = ttdata.Field(
+            use_vocab=False, init_token=None, dtype=torch.float32,
+            preprocessing=tokenize_features,
+            tokenize=lambda features: features,
+            batch_first=True, include_lengths=True,
+            postprocessing=stack_features,
+            pad_token=torch.zeros((pad_feature_size,)),
+        )
+        gls_field = ttdata.Field(
+            pad_token=PAD_TOKEN, tokenize=tokenize_text,
+            batch_first=True, lower=False, include_lengths=True,
+        )
+        txt_field = ttdata.Field(
+            init_token=BOS_TOKEN, eos_token=EOS_TOKEN, pad_token=PAD_TOKEN,
+            tokenize=tokenize_text, unk_token=UNK_TOKEN,
+            batch_first=True, lower=txt_lowercase, include_lengths=True,
+        )
+        
+        # Share vocabularies with main training
+        gls_field.vocab = gls_vocab
+        txt_field.vocab = txt_vocab
+        
+        dev_per_language = {}
+        trainer.logger.info("Loading per-language validation datasets...")
+        
+        for lang_name, lang_file in cfg["data"]["dev_per_language"].items():
+            lang_path = os.path.join(data_path, lang_file)
+            # Handle glob patterns for .part* files
+            if "*" in lang_path:
+                import glob as glob_module
+                lang_files = sorted(glob_module.glob(lang_path))
+            else:
+                lang_files = [lang_path]
+            
+            if not lang_files:
+                trainer.logger.warning("No files found for %s: %s", lang_name, lang_path)
+                continue
+            
+            try:
+                lang_dataset = SignTranslationDataset(
+                    path=lang_files,
+                    fields=(sequence_field, signer_field, sgn_field, gls_field, txt_field),
+                    filter_pred=lambda x: len(vars(x)["sgn"]) <= max_sent_length
+                    and len(vars(x)["txt"]) <= max_sent_length,
+                )
+                dev_per_language[lang_name] = lang_dataset
+                trainer.logger.info("  %s: %d samples loaded", lang_name, len(lang_dataset))
+            except Exception as e:
+                trainer.logger.warning("  %s: FAILED to load - %s", lang_name, str(e))
+        
+        if dev_per_language:
+            trainer.set_per_language_validation(dev_per_language)
+        else:
+            trainer.logger.warning("No per-language validation datasets loaded!")
 
     # store copy of original training config in model dir
     shutil.copy2(cfg_file, trainer.model_dir + "/config.yaml")
@@ -1114,7 +1439,7 @@ def train(cfg_file: str) -> None:
 
     # Prepare a small preview dataset for logging when streaming is enabled
     if isinstance(train_data, dict):
-        from torchtext.legacy import data as ttdata
+        from torchtext import data as ttdata
         td_paths = train_data["paths"] if isinstance(train_data["paths"], list) else [train_data["paths"]]
         fields = train_data["fields"]
         named_fields = [

@@ -2,8 +2,8 @@
 """
 Data module
 """
-from torchtext.legacy import data
-from torchtext.legacy.data import Field, RawField
+from torchtext import data
+from torchtext.data import Field, RawField
 from typing import List, Tuple, Iterator
 import logging
 import pickle
@@ -16,19 +16,35 @@ def load_dataset_file(filename):
 
     Supports both single-pickle files (original format) and multi-pickle
     streams produced by concatenating chunks (multipart merged files).
+    Also supports .part* files where a dataset is split into multiple parts.
     """
+    import glob
+    import os
+    
+    # Check if file exists directly or as parts
+    if os.path.exists(filename):
+        files_to_read = [filename]
+    else:
+        # Look for .part* files
+        part_pattern = filename + ".part*"
+        files_to_read = sorted(glob.glob(part_pattern), 
+                               key=lambda x: int(x.rsplit('.part', 1)[1]) if '.part' in x else 0)
+        if not files_to_read:
+            raise FileNotFoundError(f"No file or parts found for: {filename}")
+    
     samples = []
-    with gzip.open(filename, "rb") as f:
-        while True:
-            try:
-                obj = pickle.load(f)
-            except EOFError:
-                break
-            # Each chunk can be a list of samples or a single sample
-            if isinstance(obj, list):
-                samples.extend(obj)
-            else:
-                samples.append(obj)
+    for part_file in files_to_read:
+        with gzip.open(part_file, "rb") as f:
+            while True:
+                try:
+                    obj = pickle.load(f)
+                except EOFError:
+                    break
+                # Each chunk can be a list of samples or a single sample
+                if isinstance(obj, list):
+                    samples.extend(obj)
+                else:
+                    samples.append(obj)
     return samples
 
 
@@ -36,32 +52,49 @@ def iter_dataset_file(filename) -> Iterator[dict]:
     """Iterate over a dataset gzip file yielding samples one by one.
 
     Works with both single-pickle files (list of samples) and multi-pickle
-    streams (several lists written sequentially). This avoids loading the
-    entire dataset into RAM at once.
+    streams (several lists written sequentially). Also supports .part* files
+    where a dataset is split into multiple part files.
+    This avoids loading the entire dataset into RAM at once.
     """
+    import glob
+    import os
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.INFO)
-    logger.info("[dataset] Open %s", filename)
+    
+    # Check if file exists directly or as parts
+    if os.path.exists(filename):
+        files_to_read = [filename]
+    else:
+        # Look for .part* files
+        part_pattern = filename + ".part*"
+        files_to_read = sorted(glob.glob(part_pattern), 
+                               key=lambda x: int(x.rsplit('.part', 1)[1]) if '.part' in x else 0)
+        if not files_to_read:
+            raise FileNotFoundError(f"No file or parts found for: {filename}")
+        logger.info("[dataset] Found %d parts for %s", len(files_to_read), filename)
+    
     total = 0
     chunks = 0
-    with gzip.open(filename, "rb") as f:
-        while True:
-            try:
-                obj = pickle.load(f)
-            except EOFError:
-                break
-            chunks += 1
-            if isinstance(obj, list):
-                for s in obj:
+    for part_file in files_to_read:
+        logger.info("[dataset] Open %s", part_file)
+        with gzip.open(part_file, "rb") as f:
+            while True:
+                try:
+                    obj = pickle.load(f)
+                except EOFError:
+                    break
+                chunks += 1
+                if isinstance(obj, list):
+                    for s in obj:
+                        total += 1
+                        if total % 50000 == 0:
+                            logger.info("[dataset] %s: yielded %d samples (chunks=%d)", filename, total, chunks)
+                        yield s
+                else:
                     total += 1
                     if total % 50000 == 0:
                         logger.info("[dataset] %s: yielded %d samples (chunks=%d)", filename, total, chunks)
-                    yield s
-            else:
-                total += 1
-                if total % 50000 == 0:
-                    logger.info("[dataset] %s: yielded %d samples (chunks=%d)", filename, total, chunks)
-                yield obj
+                    yield obj
     logger.info("[dataset] Done %s: total samples %d, chunks %d", filename, total, chunks)
 
 

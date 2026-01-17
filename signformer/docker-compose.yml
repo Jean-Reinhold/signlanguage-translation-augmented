@@ -5,8 +5,8 @@ version: "3.9" # Use Docker Compose file version 3.9 to support 'gpus'
 services:
   signformer-pedro:
     build:
-      context: . # Build context is the current directory
-      dockerfile: Dockerfile # Name of the Dockerfile
+      context: .. # Build context is the repo root
+      dockerfile: signformer/Dockerfile # Name of the Dockerfile
     image: signformer # Tag the built image as 'signformer'
     container_name: signformer-pedro # Set the container name to 'signformer'
     runtime: nvidia
@@ -15,5 +15,5 @@ services:
     volumes:
       # mount the PHOENIX2014T dataset to the container
       - /mnt/disk3Tb/exported-slt-datasets:/app/PHOENIX2014T
-      # mount the Signformer repository to the container
-      - /home/pdalbianco/Github/Signformer:/app/Signformer
+      # mount the Signformer code from this repo
+      - /home/pdalbianco/Github/signlanguage-translation-augmented/signformer:/app/Signformer
