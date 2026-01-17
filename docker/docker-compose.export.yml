@@ -97,6 +97,33 @@ version: "3.9"
 
 services:
   # ---------------------------------------------------------------------------
+  # LSFB-CONT Vanilla Export
+  # ---------------------------------------------------------------------------
+  # Input:  /mnt/disk3Tb/slt-datasets/LSFB-CONT/poses/*.npy
+  #         /mnt/disk3Tb/slt-datasets/LSFB-CONT/annotations.csv
+  # Output: /mnt/disk3Tb/exported-slt-datasets/LSFB-CONT-1024.pami0.{split}.part*
+  # Samples: ~2.5k train, 155 val, 804 test
+  # ---------------------------------------------------------------------------
+  export-lsfb:
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile.export
+    image: slt-export:latest
+    container_name: export-lsfb
+    volumes:
+      - /mnt/disk3Tb/slt-datasets:/mnt/disk3Tb/slt-datasets:ro
+      - /mnt/disk3Tb/exported-slt-datasets:/mnt/disk3Tb/exported-slt-datasets
+    command: ["python", "/app/export/export_lsfb_cont_1024.py"]
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 2G
+    mem_limit: 8g
+    memswap_limit: 10g
+
+  # ---------------------------------------------------------------------------
   # LSFB-CONT Augmented Export
   # ---------------------------------------------------------------------------
   # Input:  /mnt/disk3Tb/slt-datasets/LSFB-CONT/poses/*.npy

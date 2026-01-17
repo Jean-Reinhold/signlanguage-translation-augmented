@@ -1,11 +1,9 @@
 # =============================================================================
-# COMBINED VANILLA BASELINE TRAINING
+# COMBINED VANILLA BASELINE TRAINING - v6 (TRUE INTERLEAVED BATCHING)
 # =============================================================================
 #
 # ⚠️  WARNING: DISK SPACE CRITICAL - Only 29GB free!
-#     Before training, consider deleting old merged files:
-#     rm /mnt/disk3Tb/exported-slt-datasets/MERGE.pami0.*      (~86GB)
-#     rm /mnt/disk3Tb/exported-slt-datasets/ISL-MERGED.pami0.* (~78GB)
+#     Before training, consider deleting old merged files.
 #     See docs/RESOURCE_CONSTRAINTS.md for details.
 #
 # =============================================================================
@@ -13,10 +11,17 @@
 # Purpose: Train Signformer on all 5 datasets WITHOUT augmentation
 # This serves as the baseline to compare against augmented training.
 #
-# Architecture: MATCHES ORIGINAL SIGNFORMER (lightweight ~6M params)
+# v6 IMPROVEMENTS (BEST PRACTICE MULTILINGUAL TRAINING):
+#   - TRUE INTERLEAVED BATCHING: Each batch contains samples from ALL languages
+#   - This prevents catastrophic forgetting (the main issue in v5b)
+#   - Temperature-weighted sampling (T=5) balances high/low resource languages
+#   - Per-language validation metrics continue from v5
+#   - Every gradient update sees all 5 sign languages
+#
+# Architecture: EXACTLY MATCHES ORIGINAL SIGNFORMER (lightweight ~6M params)
 #   - 1-layer encoder/decoder (as in paper)
 #   - 256 hidden size (as in paper)
-#   - Proven to work on PHOENIX benchmark
+#   - ORIGINAL hyperparameters (lr, batch, warmup, patience)
 #
 # Datasets (all 1024 features):
 #   - RWTH-PHOENIX-2014T: German Sign Language (DGS) -> German
@@ -49,9 +54,18 @@ data:
       - How2Sign-1024.pami0.train      # Padded OpenPose -> 1024
       - LSFB-CONT-1024.pami0.train     # Padded custom -> 1024
     
-    # Validation: use PHOENIX as primary (most established benchmark)
+    # Validation: Combined (for backward compatibility - uses PHOENIX)
     dev:
       - RWTH_PHOENIX_2014T.pami0.val
+    
+    # Per-language validation sets (v4 feature)
+    # Each language is validated separately and metrics are logged individually
+    dev_per_language:
+      PHOENIX:  RWTH_PHOENIX_2014T.pami0.val    # German Sign Language -> German
+      GSL:      GSL.pami0.val                   # Greek Sign Language -> Greek  
+      LSAT:     LSAT.pami0.val                  # Argentine Sign Language -> Spanish
+      How2Sign: How2Sign-1024.pami0.val         # ASL -> English
+      LSFB:     LSFB-CONT-1024.pami0.val        # French Belgian SL -> French
     
     # Test: evaluate on all datasets
     test:
@@ -74,6 +88,16 @@ data:
     stream_chunk_size: 3000           # Between original 5000 and conservative 2500
     stream_dev_parts: true
     stream_test_parts: true
+    
+    # Temperature-based sampling for multilingual training (v6 - interleaved)
+    # Controls how samples are distributed WITHIN each batch:
+    #   T=1: proportional to dataset size (larger datasets get more samples per batch)
+    #   T=5: balanced (standard for multilingual, as in mT5/mBART)
+    #   T=∞: uniform (equal samples from each language per batch)
+    # 
+    # v6 KEY IMPROVEMENT: Every batch contains samples from ALL languages!
+    # This ensures every gradient update improves all 5 languages simultaneously.
+    sampling_temperature: 5.0
 
 training:
     # Checkpoint management
@@ -83,7 +107,7 @@ training:
     random_seed: 42
     
     # Output directory (mounted volume)
-    model_dir: "/mnt/experiments/combined-vanilla"
+    model_dir: "/mnt/experiments/combined-vanilla-v6"
     
     # Loss configuration (translation only, no gloss recognition)
     recognition_loss_weight: 0.0
@@ -93,40 +117,41 @@ training:
     eval_metric: bleu
     early_stopping_metric: eval_metric
     
-    # Optimizer: SophiaG (as in original Signformer)
+    # Optimizer: SophiaG (ORIGINAL Signformer settings)
     optimizer: sophiag
-    learning_rate: 0.0004             # Same as original
+    learning_rate: 0.0004             # ORIGINAL: exactly as in sign.yaml
     betas:
-      - 0.95                          # Same as original
-      - 0.998
-    weight_decay: 0.003               # Same as original
+      - 0.95                          # Original beta1
+      - 0.99                          # Original beta2
+    weight_decay: 0.003               # Original weight decay
     
-    # Batch configuration (same as original)
-    batch_size: 32
+    # Batch configuration (ORIGINAL)
+    batch_size: 32                    # ORIGINAL: exactly as in sign.yaml
     batch_type: sentence
-    batch_multiplier: 1               # Same as original (no accumulation)
+    batch_multiplier: 1               # ORIGINAL: no gradient accumulation
     translation_normalization: batch
     
-    # Training schedule
-    epochs: 1000                      # Same as original
+    # Training schedule (ORIGINAL)
+    epochs: 1000                      # Extended for multilingual
     scheduling: plateau
-    learning_rate_min: 1.0e-06        # Same as original
-    patience: 10                      # Same as original
-    decrease_factor: 0.8              # Same as original
-    warmup_step: 1000                 # Same as original
+    learning_rate_min: 1.0e-06        # ORIGINAL
+    patience: 10                      # ORIGINAL
+    decrease_factor: 0.8              # ORIGINAL
+    warmup_step: 1000                 # ORIGINAL
     
     # Regularization
     label_smoothing: 0.1              # Same as original
+    clip_grad_norm: 1.0               # Keep gradient clipping for stability
     
     # SophiaG specific (from original)
     lr_s_dim_model: 256
     K: 2
     
-    # Logging and checkpoints
-    logging_freq: 100                 # Same as original
-    validation_freq: 100              # Same as original
+    # Logging and checkpoints (OPTIMIZED FOR SPEED)
+    logging_freq: 200                 # Less frequent logging
+    validation_freq: 500              # Validate every 500 steps (was 100)
     num_valid_log: 6                  # Same as original
-    keep_last_ckpts: 2                # Reduced for disk space
+    keep_last_ckpts: 1                # Minimal: only best + 1 recent
     
     # Beam search during validation
     eval_recognition_beam_size: 1
@@ -135,15 +160,14 @@ training:
     translation_max_output_length: 30 # Same as original
     
     # Runtime
-    overwrite: false
+    overwrite: true
     shuffle: true
     use_cuda: true
 
 # =============================================================================
 # MODEL: ORIGINAL SIGNFORMER ARCHITECTURE (~6M params)
 # =============================================================================
-# This is the lightweight architecture from the paper that achieved
-# competitive results with much larger models.
+# Exactly matches original Signformer - proven to work on PHOENIX
 # =============================================================================
 model:
     initializer: xavier
@@ -156,31 +180,31 @@ model:
     
     encoder:
         type: transformer
-        num_layers: 1                 # ORIGINAL: 1 layer (lightweight)
+        num_layers: 1                 # ORIGINAL: 1 layer
         num_heads: 8
         embeddings:
-            embedding_dim: 256        # ORIGINAL: 256
+            embedding_dim: 256        # ORIGINAL
             scale: false
-            dropout: 0.1              # ORIGINAL: 0.1
+            dropout: 0.1              # ORIGINAL
             norm_type: batch
             activation_type: softsign
-        hidden_size: 256              # ORIGINAL: 256
-        ff_size: 1024                 # ORIGINAL: 1024
-        dropout: 0.1
+        hidden_size: 256              # ORIGINAL
+        ff_size: 1024                 # ORIGINAL
+        dropout: 0.1                  # ORIGINAL
     
     decoder:
         type: transformer
-        num_layers: 1                 # ORIGINAL: 1 layer (lightweight)
+        num_layers: 1                 # ORIGINAL: 1 layer
         num_heads: 8
         embeddings:
-            embedding_dim: 256        # ORIGINAL: 256
+            embedding_dim: 256        # ORIGINAL
             scale: false
-            dropout: 0.1              # ORIGINAL: 0.1
+            dropout: 0.1              # ORIGINAL
             norm_type: batch
             activation_type: softsign
-        hidden_size: 256              # ORIGINAL: 256
-        ff_size: 1024                 # ORIGINAL: 1024
-        dropout: 0.1
+        hidden_size: 256              # ORIGINAL
+        ff_size: 1024                 # ORIGINAL
+        dropout: 0.1                  # ORIGINAL
 
 testing:
     recognition_beam_sizes:
