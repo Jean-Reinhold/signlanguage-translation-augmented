@@ -194,6 +194,52 @@ services:
       stack: 67108864
 
   # ===========================================================================
+  # AUGMENTED TRAINING - QUICK TEST
+  # ===========================================================================
+  # Quick pipeline validation (~5-10 min): 50 batches × 2 epochs
+  # Run this first to verify everything works before full training
+  # Usage: docker compose -f docker/docker-compose.training.yml up train-augmented-test
+  # ===========================================================================
+  train-augmented-test:
+    build:
+      context: ..
+      dockerfile: signformer/Dockerfile
+    image: signformer:training
+    container_name: train-augmented-test
+    mem_limit: 24g
+    mem_reservation: 16g
+    memswap_limit: 24g
+    <<: *gpu-config
+    volumes: *common-volumes
+    working_dir: /app/Signformer
+    command: >
+      bash -c "
+        echo '========================================' &&
+        echo 'AUGMENTED TRAINING - QUICK TEST' &&
+        echo '========================================' &&
+        echo 'Start time:' $(date) &&
+        echo 'GPU:' $(nvidia-smi --query-gpu=name --format=csv,noheader) &&
+        echo 'Config: configs/combined_augmented_test.yaml' &&
+        echo 'Epochs: 2, Batches/epoch: 50' &&
+        echo '========================================' &&
+        python -m main train configs/combined_augmented_test.yaml 2>&1 | tee /mnt/experiments/combined-augmented-test/train_$(date +%Y%m%d_%H%M%S).log
+      "
+    deploy:
+      resources:
+        limits:
+          memory: 24G
+        reservations:
+          memory: 16G
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    shm_size: '8gb'
+    ulimits:
+      memlock: -1
+      stack: 67108864
+
+  # ===========================================================================
   # INTERACTIVE SHELL (for debugging)
   # ===========================================================================
   # Usage: docker compose -f docker/docker-compose.training.yml run --rm shell

@@ -1,27 +1,11 @@
 # =============================================================================
-# COMBINED AUGMENTED TRAINING
+# COMBINED AUGMENTED TRAINING - TEST CONFIG
 # =============================================================================
-#
-# ⚠️  WARNING: DISK SPACE CRITICAL - Only 29GB free!
-#     Run AFTER vanilla baseline completes.
-#     See docs/RESOURCE_CONSTRAINTS.md for details.
-#
-# =============================================================================
-# 
-# Purpose: Train Signformer on all 5 datasets WITH augmentation
-# Compare against vanilla baseline to measure augmentation effectiveness.
-#
-# Architecture: MATCHES ORIGINAL SIGNFORMER (lightweight ~6M params)
-#   - Same as vanilla baseline for fair comparison
-#   - Only difference is the training data (augmented)
-#
-# Augmentation Applied:
-#   - Text: Paraphrasing, back-translation (LLM-based)
-#   - Pose: Kinematic perturbations (scaling, rotation, noise)
-#
+# Quick test to validate pipeline before full training
+# Runs ~50 batches for 2 epochs (~5-10 minutes)
 # =============================================================================
 
-name: combined_augmented
+name: combined_augmented_test
 
 data:
     data_path: ../PHOENIX2014T
@@ -30,81 +14,63 @@ data:
     txt: text
     gls: gloss
     
-    # Combined training data (augmented versions)
+    # SMALL datasets only for fast testing (~2 min load vs 25 min)
+    # Skips How2Sign (885 parts) and LSFB (73 parts)
     train:
       - RWTH_PHOENIX_2014T-aug.pami0.train
       - GSL-aug.pami0.train
-      - lsat-aug.pami0.train           # Note: lowercase
-      - How2Sign-aug-1024.pami0.train  # Padded + augmented
-      - LSFB-CONT-aug-1024.pami0.train # Padded + augmented
+      - lsat-aug.pami0.train
     
-    # Validation: same as vanilla (no augmentation on val/test)
     dev:
       - RWTH_PHOENIX_2014T.pami0.val
 
-    # Per-language validation sets (track forgetting)
-    dev_per_language:
-      PHOENIX:  RWTH_PHOENIX_2014T.pami0.val
-      GSL:      GSL.pami0.val
-      LSAT:     LSAT.pami0.val
-      How2Sign: How2Sign-1024.pami0.val
-      LSFB:     LSFB-CONT-1024.pami0.val
+    # Skip per-language validation for speed
+    dev_per_language: {}
     
-    # Test: vanilla versions for fair comparison
     test:
       - RWTH_PHOENIX_2014T.pami0.test
-      - GSL.pami0.test
-      - LSAT.pami0.test
-      - How2Sign-1024.pami0.test
-      - LSFB-CONT-1024.pami0.test
     
     feature_size: 1024
     level: word
     txt_lowercase: true
-    # Prefix target text with language tags to guide multilingual decoding
     prepend_lang_token: true
     lang_token_map:
       RWTH_PHOENIX_2014T: "<lang=de>"
       GSL: "<lang=el>"
       LSAT: "<lang=es>"
-      How2Sign: "<lang=en>"
-      LSFB-CONT: "<lang=fr>"
     max_sent_length: 400
     random_train_subset: -1
     random_dev_subset: -1
     multimodal: 0.0
     
-    # Streaming (same as vanilla for fair comparison)
+    # Streaming
     stream_train_parts: true
     stream_chunk_size: 3000
     stream_dev_parts: true
     stream_test_parts: true
     
-    # Temperature-based sampling for multilingual training (interleaved)
+    # Interleaved settings
     sampling_temperature: 5.0
-    # Keep all datasets active across the epoch by sampling with replacement
     interleaved_repeat: true
-    # Set a fixed number of interleaved batches per epoch (adjust if dataset sizes change)
-    interleaved_epoch_batches: 1700
-    # Buffer size per dataset for interleaved training (samples kept in memory)
-    # Keep small to prevent memory growth during training
-    interleaved_buffer_size: 100
+    # REDUCED: Only 30 batches per epoch for quick test (3 datasets)
+    interleaved_epoch_batches: 30
+    # Small buffer for 3 datasets
+    interleaved_buffer_size: 50
 
 training:
-    # Same as vanilla for fair comparison
     reset_best_ckpt: true
     reset_scheduler: true
     reset_optimizer: true
     random_seed: 42
     
-    model_dir: "/mnt/experiments/combined-augmented"
+    # Separate test directory
+    model_dir: "/mnt/experiments/combined-augmented-test"
     
     recognition_loss_weight: 0.0
     translation_loss_weight: 1.0
     eval_metric: bleu
     early_stopping_metric: eval_metric
     
-    # Same optimizer as vanilla (SophiaG)
     optimizer: sophiag
     learning_rate: 0.0004
     betas:
@@ -114,10 +80,11 @@ training:
     
     batch_size: 4
     batch_type: sentence
-    batch_multiplier: 8  # 4 × 8 = 32 effective batch size (same behavior, even less memory)
+    batch_multiplier: 8
     translation_normalization: batch
     
-    epochs: 1000
+    # REDUCED: Only 2 epochs for test
+    epochs: 2
     scheduling: plateau
     learning_rate_min: 1.0e-06
     patience: 10
@@ -129,10 +96,11 @@ training:
     lr_s_dim_model: 256
     K: 2
     
-    logging_freq: 100                 # Same as original
-    validation_freq: 100              # Same as original
-    num_valid_log: 6
-    keep_last_ckpts: 2
+    # Log every 10 batches for test visibility
+    logging_freq: 10
+    validation_freq: 25
+    num_valid_log: 3
+    keep_last_ckpts: 1
     
     eval_recognition_beam_size: 1
     eval_translation_beam_size: 1
@@ -143,9 +111,6 @@ training:
     shuffle: true
     use_cuda: true
 
-# =============================================================================
-# MODEL: SAME AS VANILLA (for fair comparison)
-# =============================================================================
 model:
     initializer: xavier
     bias_initializer: zeros
@@ -188,8 +153,5 @@ testing:
       - 1
     translation_beam_sizes:
       - 1
-      - 5
     translation_beam_alphas:
       - -1
-      - 0
-      - 1

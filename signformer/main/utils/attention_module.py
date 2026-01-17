@@ -793,7 +793,7 @@ class DeformableMultiHeadedAttention(nn.Module):
         )
         if mask is None:
             mask = torch.ones(k.size(0), 1, k.size(1), device=k.device, dtype=torch.bool)
-        sign_lens = mask.sum(-1).squeeze().float() - 1
+        sign_lens = mask.sum(-1).squeeze(-1).float() - 1  # squeeze only inner dim, keep batch
         sampling_locations = reference_point + offsets + location_point
         sampling_locations = sampling_locations % sign_lens[:, None, None, None]
         # batch x num_heads x query_len x num_keys

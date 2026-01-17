@@ -428,7 +428,11 @@ def test(
     cfg = load_config(cfg_file)
 
     global dataset_name, return_attention_type
-    dataset_name = cfg["data"]["dev"].split("/")[-1].split(".", 1)[0]
+    # Handle both single dev path (string) and multiple (list)
+    dev_path = cfg["data"]["dev"]
+    if isinstance(dev_path, list):
+        dev_path = dev_path[0]  # Use first dev set for naming
+    dataset_name = dev_path.split("/")[-1].split(".", 1)[0]
     return_attention_type = "cross"
 
     if "test" not in cfg["data"].keys():
