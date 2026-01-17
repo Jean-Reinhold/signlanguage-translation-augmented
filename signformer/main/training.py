@@ -24,10 +24,16 @@ from main.helpers import (
 )
 from main.model import SignModel
 from main.prediction import validate_on_data
-from main.dataset import SignTranslationDataset
+from main.dataset import (
+    SignTranslationDataset,
+    iter_dataset_file,
+    dataset_name_from_path,
+    lookup_lang_token,
+    apply_lang_token,
+    normalize_sign_features,
+)
 from main.loss import XentLoss
 from main.data import load_data, make_data_iter
-from main.dataset import iter_dataset_file
 from torchtext import data as ttdata
 from main.builders import build_optimizer, build_scheduler, build_gradient_clipper
 from main.prediction import test
@@ -168,6 +174,15 @@ class TrainManager:
         # T=∞: uniform sampling
         self.sampling_temperature = config["data"].get("sampling_temperature", 5.0)
         self.logger.info("Multilingual sampling temperature: %.1f", self.sampling_temperature)
+        self.prepend_lang_token = config["data"].get("prepend_lang_token", False)
+        self.lang_token_map = config["data"].get("lang_token_map", {}) or {}
+        self.interleaved_repeat = config["data"].get("interleaved_repeat", False)
+        self.interleaved_epoch_batches = config["data"].get("interleaved_epoch_batches", None)
+        if self.interleaved_repeat and not self.interleaved_epoch_batches:
+            self.logger.warning(
+                "interleaved_repeat is enabled without interleaved_epoch_batches; "
+                "epoch length will depend on dataset exhaustion."
+            )
 
         self.shuffle = train_config.get("shuffle", True)
         self.epochs = train_config["epochs"]
@@ -402,19 +417,23 @@ class TrainManager:
                 # Group paths by dataset/language
                 dataset_paths = {}
                 for p in paths:
-                    basename = os.path.basename(p)
-                    # Extract dataset name (handle .part* files)
-                    if ".pami0" in basename:
-                        dataset_name = basename.split(".pami0")[0]
-                    else:
-                        dataset_name = basename.split(".")[0]
+                    dataset_name = dataset_name_from_path(p)
                     if dataset_name not in dataset_paths:
                         dataset_paths[dataset_name] = []
                     dataset_paths[dataset_name].append(p)
-                
+
                 n_datasets = len(dataset_paths)
                 self.logger.info("[train] Interleaved batching across %d datasets: %s", 
                                n_datasets, list(dataset_paths.keys()))
+                dataset_lang_tokens = {}
+                if self.prepend_lang_token:
+                    for name in dataset_paths:
+                        token = lookup_lang_token(name, self.lang_token_map)
+                        if token is None:
+                            self.logger.warning(
+                                "[train] No lang token mapping for dataset '%s'", name
+                            )
+                        dataset_lang_tokens[name] = token
                 
                 # =========================================================
                 # PHASE 1: Pre-fill buffers from all datasets
@@ -431,7 +450,11 @@ class TrainManager:
                     for p in dataset_paths[dataset_name]:
                         self.logger.info("[train] Loading %s from %s", dataset_name, p)
                         for s in iter_dataset_file(p):
+                            s["sign"] = normalize_sign_features(s["sign"], self.feature_size)
                             txt = s["text"].strip()
+                            if self.prepend_lang_token:
+                                txt = apply_lang_token(txt, dataset_lang_tokens.get(dataset_name))
+                                s["text"] = txt
                             txt_len = len(list(txt)) if self.level == "char" else len(txt.split())
                             if len(s["sign"]) <= self.max_sent_length and txt_len <= self.max_sent_length:
                                 yield s
@@ -446,17 +469,35 @@ class TrainManager:
                     """Refill a dataset's buffer up to target_size."""
                     if name not in active_datasets:
                         return False
-                    try:
-                        while len(buffers[name]) < target_size:
+                    while len(buffers[name]) < target_size:
+                        try:
                             sample = next(generators[name])
                             buffers[name].append(sample)
-                        return True
-                    except StopIteration:
-                        if not buffers[name]:
-                            active_datasets.discard(name)
-                            self.logger.info("[train] Dataset %s exhausted (%d samples)", 
-                                           name, samples_yielded[name])
-                        return len(buffers[name]) > 0
+                            continue
+                        except StopIteration:
+                            if not self.interleaved_repeat:
+                                if not buffers[name]:
+                                    active_datasets.discard(name)
+                                    self.logger.info(
+                                        "[train] Dataset %s exhausted (%d samples)",
+                                        name,
+                                        samples_yielded[name],
+                                    )
+                                return len(buffers[name]) > 0
+                            # Restart generator to keep dataset present
+                            generators[name] = _create_sample_generator(name)
+                            try:
+                                sample = next(generators[name])
+                                buffers[name].append(sample)
+                            except StopIteration:
+                                active_datasets.discard(name)
+                                self.logger.info(
+                                    "[train] Dataset %s exhausted (%d samples)",
+                                    name,
+                                    samples_yielded[name],
+                                )
+                                return len(buffers[name]) > 0
+                    return True
                 
                 # Initial buffer fill
                 for name in list(active_datasets):
@@ -492,7 +533,10 @@ class TrainManager:
                 batch_count = 0
                 samples_per_batch = self.batch_size
                 
+                max_batches = self.interleaved_epoch_batches
                 while active_datasets:
+                    if max_batches and batch_count >= max_batches:
+                        break
                     # Build a mixed batch from all active datasets
                     mixed_batch = []
                     weights = _calc_sampling_weights()
@@ -1351,7 +1395,7 @@ def train(cfg_file: str) -> None:
     if "dev_per_language" in cfg["data"] and cfg["data"]["dev_per_language"]:
         from torchtext import data as ttdata
         import torch
-        
+
         data_path = cfg["data"].get("data_path", "./data")
         pad_feature_size = (
             sum(cfg["data"]["feature_size"]) 
@@ -1400,6 +1444,8 @@ def train(cfg_file: str) -> None:
         
         dev_per_language = {}
         trainer.logger.info("Loading per-language validation datasets...")
+        prepend_lang_token = cfg["data"].get("prepend_lang_token", False)
+        lang_token_map = cfg["data"].get("lang_token_map", {}) or {}
         
         for lang_name, lang_file in cfg["data"]["dev_per_language"].items():
             lang_path = os.path.join(data_path, lang_file)
@@ -1415,9 +1461,17 @@ def train(cfg_file: str) -> None:
                 continue
             
             try:
+                dataset_name = dataset_name_from_path(lang_file)
+                lang_token = lookup_lang_token(dataset_name, lang_token_map) if prepend_lang_token else None
+                if prepend_lang_token and lang_token is None:
+                    trainer.logger.warning(
+                        "No lang token mapping for dataset '%s' (%s)", dataset_name, lang_name
+                    )
                 lang_dataset = SignTranslationDataset(
                     path=lang_files,
                     fields=(sequence_field, signer_field, sgn_field, gls_field, txt_field),
+                    txt_prefix=lang_token,
+                    sign_feature_size=pad_feature_size,
                     filter_pred=lambda x: len(vars(x)["sgn"]) <= max_sent_length
                     and len(vars(x)["txt"]) <= max_sent_length,
                 )
@@ -1450,10 +1504,22 @@ def train(cfg_file: str) -> None:
             ("txt", fields[4]),
         ]
         preview_samples = []
+        lang_token_map = cfg["data"].get("lang_token_map", {}) or {}
+        prepend_lang_token = cfg["data"].get("prepend_lang_token", False)
+        dataset_name = dataset_name_from_path(td_paths[0])
+        lang_token = lookup_lang_token(dataset_name, lang_token_map) if prepend_lang_token else None
         try:
             src_iter = iter_dataset_file(td_paths[0])
             for _ in range(16):
                 smp = next(src_iter)
+                smp["sign"] = normalize_sign_features(
+                    smp["sign"],
+                    sum(cfg["data"]["feature_size"])
+                    if isinstance(cfg["data"]["feature_size"], list)
+                    else cfg["data"]["feature_size"],
+                )
+                if lang_token:
+                    smp["text"] = apply_lang_token(smp["text"].strip(), lang_token)
                 preview_samples.append(smp)
         except StopIteration:
             pass

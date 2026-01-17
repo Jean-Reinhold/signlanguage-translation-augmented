@@ -4,11 +4,12 @@ Data module
 """
 from torchtext import data
 from torchtext.data import Field, RawField
-from typing import List, Tuple, Iterator
+from typing import List, Tuple, Iterator, Optional
 import logging
 import pickle
 import gzip
 import torch
+import os
 
 
 def load_dataset_file(filename):
@@ -98,6 +99,63 @@ def iter_dataset_file(filename) -> Iterator[dict]:
     logger.info("[dataset] Done %s: total samples %d, chunks %d", filename, total, chunks)
 
 
+def dataset_name_from_path(path: str) -> str:
+    """Extract dataset name from a dataset file path."""
+    base = os.path.basename(path)
+    if ".pami0" in base:
+        base = base.split(".pami0")[0]
+    else:
+        base = base.split(".")[0]
+    return base
+
+
+def _normalize_dataset_name(name: str) -> str:
+    for suffix in ("-aug-1024", "-1024-aug", "-aug", "-1024"):
+        if name.endswith(suffix):
+            return name[: -len(suffix)]
+    return name
+
+
+def lookup_lang_token(dataset_name: str, lang_token_map: dict) -> Optional[str]:
+    """Lookup a language token for a dataset name with simple normalization."""
+    if not lang_token_map:
+        return None
+    candidates = [dataset_name, _normalize_dataset_name(dataset_name)]
+    for c in list(candidates):
+        candidates.extend([c.lower(), c.upper()])
+    for key in candidates:
+        if key in lang_token_map:
+            return lang_token_map[key]
+    return None
+
+
+def apply_lang_token(text: str, lang_token: Optional[str]) -> str:
+    """Prefix language token to text if provided and not already present."""
+    if not lang_token:
+        return text
+    token = lang_token.strip()
+    if not token:
+        return text
+    if text.startswith(token):
+        return text
+    return f"{token} {text}".strip()
+
+
+def normalize_sign_features(sign: torch.Tensor, target_dim: int) -> torch.Tensor:
+    """Pad or crop sign feature dimension to target_dim."""
+    if sign is None or target_dim is None:
+        return sign
+    current_dim = sign.shape[-1]
+    if current_dim == target_dim:
+        return sign
+    if current_dim > target_dim:
+        return sign[..., :target_dim]
+    pad_shape = list(sign.shape)
+    pad_shape[-1] = target_dim - current_dim
+    pad = torch.zeros(*pad_shape, dtype=sign.dtype, device=sign.device)
+    return torch.cat([sign, pad], dim=-1)
+
+
 class SignTranslationDataset(data.Dataset):
     """Defines a dataset for machine translation."""
 
@@ -109,6 +167,8 @@ class SignTranslationDataset(data.Dataset):
         self,
         path: str,
         fields: Tuple[RawField, RawField, Field, Field, Field],
+        txt_prefix: Optional[str] = None,
+        sign_feature_size: Optional[int] = None,
         **kwargs
     ):
         """Create a SignTranslationDataset given paths and fields.
@@ -118,6 +178,8 @@ class SignTranslationDataset(data.Dataset):
             exts: A tuple containing the extension to path for each language.
             fields: A tuple containing the fields that will be used for data
                 in each language.
+            txt_prefix: Optional token to prefix target text (e.g., language tag).
+            sign_feature_size: Optional target feature dimension for sign tensors.
             Remaining keyword arguments: Passed to the constructor of
                 data.Dataset.
         """
@@ -142,21 +204,24 @@ class SignTranslationDataset(data.Dataset):
             logger.info("[dataset] Reading %s", annotation_file)
             for s in iter_dataset_file(annotation_file):
                 seq_id = s["name"]
+                text = s["text"].strip()
+                text = apply_lang_token(text, txt_prefix)
+                sign = normalize_sign_features(s["sign"], sign_feature_size)
                 if seq_id in samples:
                     assert samples[seq_id]["name"] == s["name"]
                     assert samples[seq_id]["signer"] == s["signer"]
                     assert samples[seq_id]["gloss"] == s["gloss"]
-                    assert samples[seq_id]["text"] == s["text"]
+                    assert samples[seq_id]["text"] == text
                     samples[seq_id]["sign"] = torch.cat(
-                        [samples[seq_id]["sign"], s["sign"]], axis=1
+                        [samples[seq_id]["sign"], sign], axis=1
                     )
                 else:
                     samples[seq_id] = {
                         "name": s["name"],
                         "signer": s["signer"],
                         "gloss": s["gloss"],
-                        "text": s["text"],
-                        "sign": s["sign"],
+                        "text": text,
+                        "sign": sign,
                     }
                 processed += 1
                 if processed % 100000 == 0:

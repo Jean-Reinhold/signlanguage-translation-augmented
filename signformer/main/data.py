@@ -10,7 +10,13 @@ import torch
 from torchtext import data
 from torchtext.data import Dataset, Iterator
 import socket
-from main.dataset import SignTranslationDataset, iter_dataset_file
+from main.dataset import (
+    SignTranslationDataset,
+    iter_dataset_file,
+    dataset_name_from_path,
+    lookup_lang_token,
+    apply_lang_token,
+)
 import logging
 from main.vocabulary import (
     build_vocab,
@@ -120,12 +126,15 @@ def load_data(data_cfg: dict) -> (Dataset, Dataset, Dataset, Vocabulary, Vocabul
     )
 
     stream_train_parts = data_cfg.get("stream_train_parts", False)
+    prepend_lang_token = data_cfg.get("prepend_lang_token", False)
+    lang_token_map = data_cfg.get("lang_token_map", {}) or {}
+    missing_lang_token = set()
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
 
     # If streaming, build vocabs without materializing the full train dataset
     # to avoid excessive RAM usage.
     if stream_train_parts:
-        logger = logging.getLogger(__name__)
-        logger.setLevel(logging.INFO)
         logger.info("[data] stream_train_parts enabled")
         max_vocab_samples = None
         gls_max_size = data_cfg.get("gls_voc_limit", sys.maxsize)
@@ -142,6 +151,15 @@ def load_data(data_cfg: dict) -> (Dataset, Dataset, Dataset, Vocabulary, Vocabul
             yielded = 0
             samples_seen = 0
             for p in paths if isinstance(paths, list) else [paths]:
+                dataset_name = dataset_name_from_path(p)
+                lang_token = None
+                if prepend_lang_token:
+                    lang_token = lookup_lang_token(dataset_name, lang_token_map)
+                    if lang_token is None and dataset_name not in missing_lang_token:
+                        logger.warning(
+                            "[data] No lang token mapping for dataset '%s'", dataset_name
+                        )
+                        missing_lang_token.add(dataset_name)
                 # Check if file exists directly or as parts
                 import gzip as _gzip
                 import pickle as _pickle
@@ -173,6 +191,8 @@ def load_data(data_cfg: dict) -> (Dataset, Dataset, Dataset, Vocabulary, Vocabul
                                 samples_seen += 1
                                 # extract text/gloss, then drop heavy tensor to free RAM early
                                 _text = _s["text"].strip() if field_name == "txt" else _s["gloss"].strip()
+                                if field_name == "txt" and lang_token:
+                                    _text = apply_lang_token(_text, lang_token)
                                 if "sign" in _s:
                                     try:
                                         del _s["sign"]
@@ -296,12 +316,25 @@ def load_data(data_cfg: dict) -> (Dataset, Dataset, Dataset, Vocabulary, Vocabul
         train_data = {
             "paths": train_paths,
             "fields": (sequence_field, signer_field, sgn_field, gls_field, txt_field),
+            "prepend_lang_token": prepend_lang_token,
+            "lang_token_map": lang_token_map,
+            "stream_chunk_size": data_cfg.get("stream_chunk_size", 5000),
         }
         logger.info("[data] Returning streaming train descriptor (no full Dataset loaded)")
     else:
+        txt_prefix = None
+        if prepend_lang_token and isinstance(train_paths, str):
+            dataset_name = dataset_name_from_path(train_paths)
+            txt_prefix = lookup_lang_token(dataset_name, lang_token_map)
+            if txt_prefix is None:
+                logger.warning(
+                    "[data] No lang token mapping for dataset '%s'", dataset_name
+                )
         train_data = SignTranslationDataset(
             path=train_paths,
             fields=(sequence_field, signer_field, sgn_field, gls_field, txt_field),
+            txt_prefix=txt_prefix,
+            sign_feature_size=pad_feature_size,
             filter_pred=lambda x: len(vars(x)["sgn"]) <= max_sent_length
             and len(vars(x)["txt"]) <= max_sent_length,
         )
@@ -343,11 +376,24 @@ def load_data(data_cfg: dict) -> (Dataset, Dataset, Dataset, Vocabulary, Vocabul
         dev_data = {
             "paths": dev_paths,
             "fields": (sequence_field, signer_field, sgn_field, gls_field, txt_field),
+            "prepend_lang_token": prepend_lang_token,
+            "lang_token_map": lang_token_map,
+            "stream_chunk_size": data_cfg.get("stream_chunk_size", 5000),
         }
     else:
+        txt_prefix = None
+        if prepend_lang_token and isinstance(dev_paths, str):
+            dataset_name = dataset_name_from_path(dev_paths)
+            txt_prefix = lookup_lang_token(dataset_name, lang_token_map)
+            if txt_prefix is None:
+                logger.warning(
+                    "[data] No lang token mapping for dataset '%s'", dataset_name
+                )
         dev_data = SignTranslationDataset(
             path=dev_paths,
             fields=(sequence_field, signer_field, sgn_field, gls_field, txt_field),
+            txt_prefix=txt_prefix,
+            sign_feature_size=pad_feature_size,
         )
     random_dev_subset = data_cfg.get("random_dev_subset", -1)
     if random_dev_subset > -1:
@@ -364,11 +410,24 @@ def load_data(data_cfg: dict) -> (Dataset, Dataset, Dataset, Vocabulary, Vocabul
         test_data = {
             "paths": test_paths,
             "fields": (sequence_field, signer_field, sgn_field, gls_field, txt_field),
+            "prepend_lang_token": prepend_lang_token,
+            "lang_token_map": lang_token_map,
+            "stream_chunk_size": data_cfg.get("stream_chunk_size", 5000),
         }
     else:
+        txt_prefix = None
+        if prepend_lang_token and isinstance(test_paths, str):
+            dataset_name = dataset_name_from_path(test_paths)
+            txt_prefix = lookup_lang_token(dataset_name, lang_token_map)
+            if txt_prefix is None:
+                logger.warning(
+                    "[data] No lang token mapping for dataset '%s'", dataset_name
+                )
         test_data = SignTranslationDataset(
             path=test_paths,
             fields=(sequence_field, signer_field, sgn_field, gls_field, txt_field),
+            txt_prefix=txt_prefix,
+            sign_feature_size=pad_feature_size,
         )
 
     if not stream_train_parts:

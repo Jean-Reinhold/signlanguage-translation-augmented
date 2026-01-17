@@ -78,6 +78,14 @@ data:
     feature_size: 1024
     level: word
     txt_lowercase: true
+    # Prefix target text with language tags to guide multilingual decoding
+    prepend_lang_token: true
+    lang_token_map:
+      RWTH_PHOENIX_2014T: "<lang=de>"
+      GSL: "<lang=el>"
+      LSAT: "<lang=es>"
+      How2Sign: "<lang=en>"
+      LSFB-CONT: "<lang=fr>"
     max_sent_length: 400
     random_train_subset: -1
     random_dev_subset: -1
@@ -98,6 +106,10 @@ data:
     # v6 KEY IMPROVEMENT: Every batch contains samples from ALL languages!
     # This ensures every gradient update improves all 5 languages simultaneously.
     sampling_temperature: 5.0
+    # Keep all datasets active across the epoch by sampling with replacement
+    interleaved_repeat: true
+    # Set a fixed number of interleaved batches per epoch (adjust if dataset sizes change)
+    interleaved_epoch_batches: 1700
 
 training:
     # Checkpoint management

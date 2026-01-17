@@ -41,6 +41,14 @@ data:
     # Validation: same as vanilla (no augmentation on val/test)
     dev:
       - RWTH_PHOENIX_2014T.pami0.val
+
+    # Per-language validation sets (track forgetting)
+    dev_per_language:
+      PHOENIX:  RWTH_PHOENIX_2014T.pami0.val
+      GSL:      GSL.pami0.val
+      LSAT:     LSAT.pami0.val
+      How2Sign: How2Sign-1024.pami0.val
+      LSFB:     LSFB-CONT-1024.pami0.val
     
     # Test: vanilla versions for fair comparison
     test:
@@ -53,6 +61,14 @@ data:
     feature_size: 1024
     level: word
     txt_lowercase: true
+    # Prefix target text with language tags to guide multilingual decoding
+    prepend_lang_token: true
+    lang_token_map:
+      RWTH_PHOENIX_2014T: "<lang=de>"
+      GSL: "<lang=el>"
+      LSAT: "<lang=es>"
+      How2Sign: "<lang=en>"
+      LSFB-CONT: "<lang=fr>"
     max_sent_length: 400
     random_train_subset: -1
     random_dev_subset: -1
@@ -63,6 +79,13 @@ data:
     stream_chunk_size: 3000
     stream_dev_parts: true
     stream_test_parts: true
+    
+    # Temperature-based sampling for multilingual training (interleaved)
+    sampling_temperature: 5.0
+    # Keep all datasets active across the epoch by sampling with replacement
+    interleaved_repeat: true
+    # Set a fixed number of interleaved batches per epoch (adjust if dataset sizes change)
+    interleaved_epoch_batches: 1700
 
 training:
     # Same as vanilla for fair comparison

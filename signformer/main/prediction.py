@@ -23,7 +23,13 @@ from main.model import build_model, SignModel
 from main.batch import Batch
 from main.data import load_data, make_data_iter
 from torchtext import data as ttdata
-from main.dataset import iter_dataset_file
+from main.dataset import (
+    iter_dataset_file,
+    dataset_name_from_path,
+    lookup_lang_token,
+    apply_lang_token,
+    normalize_sign_features,
+)
 from main.vocabulary import PAD_TOKEN, SIL_TOKEN
 from main.phoenix_utils.phoenix_cleanup import (
     clean_phoenix_2014,
@@ -110,6 +116,9 @@ def validate_on_data(
         if isinstance(data, dict):
             paths = data["paths"] if isinstance(data["paths"], list) else [data["paths"]]
             fields = data["fields"]
+            lang_token_map = data.get("lang_token_map", {}) or {}
+            prepend_lang_token = data.get("prepend_lang_token", False)
+            missing_lang_token = set()
             named_fields = [
                 ("sequence", fields[0]),
                 ("signer", fields[1]),
@@ -117,10 +126,22 @@ def validate_on_data(
                 ("gls", fields[3]),
                 ("txt", fields[4]),
             ]
-            stream_chunk_size = 5000
+            stream_chunk_size = data.get("stream_chunk_size", 5000)
             for p in paths:
+                dataset_name = dataset_name_from_path(p)
+                lang_token = None
+                if prepend_lang_token:
+                    lang_token = lookup_lang_token(dataset_name, lang_token_map)
+                    if lang_token is None and dataset_name not in missing_lang_token:
+                        logging.getLogger(__name__).warning(
+                            "[valid] No lang token mapping for dataset '%s'", dataset_name
+                        )
+                        missing_lang_token.add(dataset_name)
                 buffer = []
                 for s in iter_dataset_file(p):
+                    s["sign"] = normalize_sign_features(s["sign"], sgn_dim)
+                    if lang_token:
+                        s["text"] = apply_lang_token(s["text"].strip(), lang_token)
                     buffer.append(s)
                     if len(buffer) >= stream_chunk_size:
                         examples = [
