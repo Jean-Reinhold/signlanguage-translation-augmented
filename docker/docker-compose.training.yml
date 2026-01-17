@@ -85,6 +85,8 @@ services:
   tensorboard:
     image: tensorflow/tensorflow:2.11.0
     container_name: tensorboard-training
+    mem_limit: 1g
+    memswap_limit: 1g
     ports:
       - "6006:6006"
     volumes:
@@ -114,6 +116,9 @@ services:
       dockerfile: signformer/Dockerfile
     image: signformer:training
     container_name: train-vanilla
+    mem_limit: 24g
+    mem_reservation: 16g
+    memswap_limit: 24g
     <<: *gpu-config
     volumes: *common-volumes
     working_dir: /app/Signformer
@@ -131,7 +136,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 28G
+          memory: 24G
         reservations:
           memory: 16G
           devices:
@@ -156,6 +161,9 @@ services:
       dockerfile: signformer/Dockerfile
     image: signformer:training
     container_name: train-augmented
+    mem_limit: 24g
+    mem_reservation: 16g
+    memswap_limit: 24g
     <<: *gpu-config
     volumes: *common-volumes
     working_dir: /app/Signformer
@@ -173,7 +181,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 28G
+          memory: 24G
         reservations:
           memory: 16G
           devices:
@@ -196,6 +204,8 @@ services:
       dockerfile: signformer/Dockerfile
     image: signformer:training
     container_name: signformer-shell
+    mem_limit: 24g
+    memswap_limit: 24g
     <<: *gpu-config
     volumes: *common-volumes
     working_dir: /app/Signformer
@@ -205,4 +215,4 @@ services:
     deploy:
       resources:
         limits:
-          memory: 28G
+          memory: 24G
